@@ -768,14 +768,6 @@ testHeader.Text = "Test Scripts"
 testHeader.Parent = testPage
 
 local testing = {
-    {"OP NoCooldown V2", "https://pastefy.app/TKPBRXLV/raw"},
-    {"OP Anim Tools V2", "https://pastefy.app/vZaM5MGz/raw"},
-    {"OP No-Anim Tools V2", "https://pastefy.app/WasED9hl/raw"},
-    {"OP Respawn V2", "https://pastefy.app/AEXGWk46/raw"},
-    {"Kill Aura V3", "https://pastefy.app/cHB18FKG/raw"},
-    {"OP Get Tools V2", "https://pastefy.app/ETV5pszW/raw"},
-    {"Damage V2", "https://pastefy.app/a8JSv1B6/raw"},
-    {"Float Tools V2", "https://pastefy.app/ceAeq4Ka/raw"},
     {"Anti-GodMode", "https://pastefy.app/pyLRQ8bM/raw"},
 }
 

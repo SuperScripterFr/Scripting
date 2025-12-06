@@ -18,6 +18,7 @@ local whitelist = {
     [5146822757] = true, -- (Alt)
     [5054998059] = true, -- (Alt)
     [7820186858] = true, -- (Alt)
+    [10076835118] = true, -- (Alt)
     [9407037318] = true, -- Messi
     [1989950303] = true, -- Lucky
     
@@ -36,6 +37,7 @@ local VERIFIED_USERS = {
     5146822757, -- (Alt)
     5054998059, -- (Alt)
     7820186858, -- (Alt)
+    10076835118, -- (Alt)
     1989950303, -- Lucky
 }
 local function isVerified(userId)

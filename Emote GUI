@@ -1,0 +1,307 @@
+-- 🔥 FINAL UNIVERSAL EMOTE GUI 🔥
+-- R15 ONLY | Catalog-wide | Manual ID Runner | Mobile Friendly
+
+--------------------------------------------------
+-- SERVICES
+--------------------------------------------------
+local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
+local UserInputService = game:GetService("UserInputService")
+local GuiService = game:GetService("GuiService")
+local StarterGui = game:GetService("StarterGui")
+
+local LocalPlayer = Players.LocalPlayer
+
+--------------------------------------------------
+-- CHARACTER SAFETY
+--------------------------------------------------
+local function getHumanoid()
+	local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+	local hum = char:WaitForChild("Humanoid")
+	if hum.RigType ~= Enum.HumanoidRigType.R15 then
+		warn("R15 required for emotes")
+		return nil
+	end
+	return hum
+end
+
+--------------------------------------------------
+-- GUI ROOT
+--------------------------------------------------
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "UniversalEmoteGui"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = game:GetService("CoreGui")
+
+--------------------------------------------------
+-- FLOATING TOGGLE (MOBILE FRIENDLY)
+--------------------------------------------------
+local Float = Instance.new("TextButton")
+Float.Size = UDim2.fromScale(0.06, 0.06)
+Float.Position = UDim2.fromScale(0.05, 0.5)
+Float.AnchorPoint = Vector2.new(0.5, 0.5)
+Float.Text = "😊"
+Float.TextScaled = true
+Float.BackgroundColor3 = Color3.fromRGB(30,30,30)
+Float.TextColor3 = Color3.new(1,1,1)
+Float.Draggable = true
+Float.Parent = ScreenGui
+Instance.new("UICorner", Float).CornerRadius = UDim.new(1,0)
+
+--------------------------------------------------
+-- MAIN WINDOW
+--------------------------------------------------
+local Main = Instance.new("Frame")
+Main.Size = UDim2.fromScale(0.6, 0.65)
+Main.Position = UDim2.fromScale(0.5, 0.5)
+Main.AnchorPoint = Vector2.new(0.5, 0.5)
+Main.BackgroundColor3 = Color3.fromRGB(18,18,18)
+Main.Visible = false
+Main.Parent = ScreenGui
+Instance.new("UICorner", Main).CornerRadius = UDim.new(0.04,0)
+
+--------------------------------------------------
+-- TOP BAR
+--------------------------------------------------
+local Close = Instance.new("TextButton")
+Close.Size = UDim2.fromScale(0.08, 0.08)
+Close.Position = UDim2.fromScale(0.02, 0.02)
+Close.Text = "X"
+Close.TextScaled = true
+Close.Font = Enum.Font.GothamBold
+Close.BackgroundColor3 = Color3.fromRGB(150,40,40)
+Close.TextColor3 = Color3.new(1,1,1)
+Close.Parent = Main
+Instance.new("UICorner", Close)
+
+Close.MouseButton1Click:Connect(function()
+	Main.Visible = false
+end)
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, -140, 0.1, 0)
+Title.Position = UDim2.new(0.12, 0, 0, 0)
+Title.Text = "Emote Browser"
+Title.TextScaled = true
+Title.Font = Enum.Font.GothamBold
+Title.TextColor3 = Color3.new(1,1,1)
+Title.BackgroundTransparency = 1
+Title.Parent = Main
+
+--------------------------------------------------
+-- HAMBURGER BUTTON
+--------------------------------------------------
+local MenuBtn = Instance.new("TextButton")
+MenuBtn.Size = UDim2.fromScale(0.08, 0.08)
+MenuBtn.Position = UDim2.fromScale(0.9, 0.02)
+MenuBtn.Text = "☰"
+MenuBtn.TextScaled = true
+MenuBtn.Font = Enum.Font.GothamBold
+MenuBtn.BackgroundColor3 = Color3.fromRGB(40,40,40)
+MenuBtn.TextColor3 = Color3.new(1,1,1)
+MenuBtn.Parent = Main
+Instance.new("UICorner", MenuBtn)
+
+--------------------------------------------------
+-- SIDE PANEL (EMOTE ID RUNNER)
+--------------------------------------------------
+local Side = Instance.new("Frame")
+Side.Size = UDim2.fromScale(0.35, 0.8)
+Side.Position = UDim2.fromScale(1, 0.1)
+Side.BackgroundColor3 = Color3.fromRGB(25,25,25)
+Side.Visible = false
+Side.Parent = Main
+Instance.new("UICorner", Side)
+
+MenuBtn.MouseButton1Click:Connect(function()
+	Side.Visible = not Side.Visible
+end)
+
+local SideTitle = Instance.new("TextLabel")
+SideTitle.Size = UDim2.fromScale(1, 0.15)
+SideTitle.Text = "Play Emote by ID"
+SideTitle.TextScaled = true
+SideTitle.Font = Enum.Font.GothamBold
+SideTitle.TextColor3 = Color3.new(1,1,1)
+SideTitle.BackgroundTransparency = 1
+SideTitle.Parent = Side
+
+local IdBox = Instance.new("TextBox")
+IdBox.Size = UDim2.fromScale(0.9, 0.18)
+IdBox.Position = UDim2.fromScale(0.05, 0.25)
+IdBox.PlaceholderText = "Enter Emote ID"
+IdBox.TextScaled = true
+IdBox.ClearTextOnFocus = false
+IdBox.BackgroundColor3 = Color3.fromRGB(35,35,35)
+IdBox.TextColor3 = Color3.new(1,1,1)
+IdBox.Parent = Side
+Instance.new("UICorner", IdBox)
+
+local PlayBtn = Instance.new("TextButton")
+PlayBtn.Size = UDim2.fromScale(0.9, 0.15)
+PlayBtn.Position = UDim2.fromScale(0.05, 0.48)
+PlayBtn.Text = "Play"
+PlayBtn.TextScaled = true
+PlayBtn.Font = Enum.Font.GothamBold
+PlayBtn.BackgroundColor3 = Color3.fromRGB(40,120,40)
+PlayBtn.TextColor3 = Color3.new(1,1,1)
+PlayBtn.Parent = Side
+Instance.new("UICorner", PlayBtn)
+
+local ClearBtn = Instance.new("TextButton")
+ClearBtn.Size = UDim2.fromScale(0.9, 0.12)
+ClearBtn.Position = UDim2.fromScale(0.05, 0.66)
+ClearBtn.Text = "Clear"
+ClearBtn.TextScaled = true
+ClearBtn.Font = Enum.Font.Gotham
+ClearBtn.BackgroundColor3 = Color3.fromRGB(80,80,80)
+ClearBtn.TextColor3 = Color3.new(1,1,1)
+ClearBtn.Parent = Side
+Instance.new("UICorner", ClearBtn)
+
+--------------------------------------------------
+-- EMOTE PLAY FUNCTION
+--------------------------------------------------
+local function playEmoteById(id)
+	local hum = getHumanoid()
+	if not hum then return end
+	pcall(function()
+		hum:PlayEmoteAndGetAnimTrackById(tonumber(id))
+	end)
+end
+
+PlayBtn.MouseButton1Click:Connect(function()
+	playEmoteById(IdBox.Text)
+end)
+
+ClearBtn.MouseButton1Click:Connect(function()
+	IdBox.Text = ""
+end)
+
+IdBox.FocusLost:Connect(function(enter)
+	if enter then
+		playEmoteById(IdBox.Text)
+	end
+end)
+
+--------------------------------------------------
+-- SEARCH BAR
+--------------------------------------------------
+local Search = Instance.new("TextBox")
+Search.Size = UDim2.fromScale(0.6, 0.08)
+Search.Position = UDim2.fromScale(0.2, 0.12)
+Search.PlaceholderText = "Search emotes..."
+Search.TextScaled = true
+Search.BackgroundColor3 = Color3.fromRGB(30,30,30)
+Search.TextColor3 = Color3.new(1,1,1)
+Search.ClearTextOnFocus = false
+Search.Parent = Main
+Instance.new("UICorner", Search)
+
+--------------------------------------------------
+-- SCROLLING LIST
+--------------------------------------------------
+local Scroll = Instance.new("ScrollingFrame")
+Scroll.Size = UDim2.fromScale(0.95, 0.72)
+Scroll.Position = UDim2.fromScale(0.025, 0.22)
+Scroll.CanvasSize = UDim2.new(0,0,0,0)
+Scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+Scroll.ScrollBarThickness = 6
+Scroll.BackgroundTransparency = 1
+Scroll.Parent = Main
+
+local Grid = Instance.new("UIGridLayout")
+Grid.CellSize = UDim2.fromScale(0.18, 0.18)
+Grid.CellPadding = UDim2.fromScale(0.02, 0.02)
+Grid.Parent = Scroll
+
+--------------------------------------------------
+-- EMOTE BUTTONS
+--------------------------------------------------
+local Buttons = {}
+
+local function createEmoteButton(name, id)
+	local btn = Instance.new("TextButton")
+	btn.Text = name
+	btn.TextScaled = true
+	btn.Font = Enum.Font.Gotham
+	btn.BackgroundColor3 = Color3.fromRGB(35,35,35)
+	btn.TextColor3 = Color3.new(1,1,1)
+	btn.BorderSizePixel = 0
+	btn.Parent = Scroll
+	Instance.new("UICorner", btn)
+
+	btn.MouseButton1Click:Connect(function()
+		playEmoteById(id)
+	end)
+
+	table.insert(Buttons, btn)
+end
+
+Search:GetPropertyChangedSignal("Text"):Connect(function()
+	local text = Search.Text:lower()
+	for _,b in ipairs(Buttons) do
+		b.Visible = (text == "" or b.Text:lower():find(text,1,true))
+	end
+end)
+
+--------------------------------------------------
+-- SAFE FULL CATALOG LOADER
+--------------------------------------------------
+task.spawn(function()
+	local cursor = ""
+	local REQUEST_DELAY = 0.15
+	local MAX_PAGES = 50
+	local pages = 0
+
+	while pages < MAX_PAGES do
+		pages += 1
+		local success, res = pcall(function()
+			return game:HttpGetAsync(
+				"https://catalog.roblox.com/v1/search/items/details" ..
+				"?Category=12&Subcategory=39&IncludeNotForSale=true&Limit=30&Cursor=" .. cursor
+			)
+		end)
+		if not success then break end
+
+		local data = HttpService:JSONDecode(res)
+		if not data or not data.data then break end
+
+		for _,item in ipairs(data.data) do
+			if item.id and item.name then
+				createEmoteButton(item.name, item.id)
+			end
+		end
+
+		if not data.nextPageCursor then break end
+		cursor = data.nextPageCursor
+		task.wait(REQUEST_DELAY)
+	end
+end)
+
+--------------------------------------------------
+-- TOGGLES
+--------------------------------------------------
+Float.MouseButton1Click:Connect(function()
+	Main.Visible = not Main.Visible
+	GuiService:SetEmotesMenuOpen(false)
+end)
+
+UserInputService.InputBegan:Connect(function(i,gp)
+	if gp then return end
+	if i.KeyCode == Enum.KeyCode.Comma then
+		Main.Visible = not Main.Visible
+	end
+end)
+
+--------------------------------------------------
+-- NOTIFY
+--------------------------------------------------
+pcall(function()
+	StarterGui:SetCore("SendNotification",{
+		Title = "Emote GUI Loaded",
+		Text = "Press , or tap 😊",
+		Duration = 6
+	})
+end)

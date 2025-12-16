@@ -324,7 +324,7 @@ Float.MouseButton1Click:Connect(function()
 end)
 
 UserInputService.InputBegan:Connect(function(i,gp)
-	if not gp and i.KeyCode == Enum.KeyCode.Comma then
+	if not gp and i.KeyCode == Enum.KeyCode.Z then
 		Main.Visible = not Main.Visible
 	end
 end)

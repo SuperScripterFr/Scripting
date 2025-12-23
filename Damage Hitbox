@@ -1,0 +1,297 @@
+local player = game.Players.LocalPlayer
+
+local mouse = player:GetMouse()
+
+local UserInputService = game:GetService("UserInputService")
+
+local RunService = game:GetService("RunService")
+
+local gui = player:WaitForChild("PlayerGui")
+
+local targetPlayer = nil
+
+local following = false
+
+_G.HeadSize = 15
+
+_G.HitboxSize = Vector3.new(15, 15, 15)
+
+_G.Disabled = false
+
+_G.ToggleKey = Enum.KeyCode.H
+
+local detectionRange = 20  -- Rango en studs para detectar enemigos automáticamente
+
+-- GUI para mostrar el nombre del objetivo
+
+local frame = Instance.new("Frame")
+
+frame.Size = UDim2.new(0, 200, 0, 50)
+
+frame.Position = UDim2.new(0.5, -100, 0.1, 0)
+
+frame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+
+frame.BackgroundTransparency = 0.5
+
+frame.Visible = false
+
+frame.Parent = gui
+
+local label = Instance.new("TextLabel")
+
+label.Size = UDim2.new(1, 0, 1, 0)
+
+label.BackgroundTransparency = 1
+
+label.TextColor3 = Color3.fromRGB(255, 255, 255)
+
+label.TextScaled = true
+
+label.Parent = frame
+
+-- Función para encontrar automáticamente el enemigo más cercano dentro del rango
+
+local function findClosestTarget()
+
+    local closestPlayer = nil
+
+    local minDistance = detectionRange
+
+    for _, v in pairs(game.Players:GetPlayers()) do  
+
+        if v ~= player and v.Character and v.Character:FindFirstChild("HumanoidRootPart") then  
+
+            local distance = (player.Character.HumanoidRootPart.Position - v.Character.HumanoidRootPart.Position).Magnitude  
+
+            if distance <= minDistance then  
+
+                minDistance = distance  
+
+                closestPlayer = v  
+
+            end  
+
+        end  
+
+    end  
+
+    return closestPlayer
+
+end
+
+-- Función para seguir al objetivo y hacer loopbring de los tools
+
+local function followTarget()
+
+    if following then return end
+
+    following = true
+
+    RunService.Heartbeat:Connect(function()  
+
+        local closestEnemy = findClosestTarget()  
+
+        if closestEnemy and closestEnemy.Character and closestEnemy.Character:FindFirstChild("HumanoidRootPart") then  
+
+            targetPlayer = closestEnemy  
+
+            label.Text = "Siguiendo a: " .. closestEnemy.Name  
+
+            frame.Visible = true  
+
+            local targetHRP = closestEnemy.Character.HumanoidRootPart  
+
+            -- Loopbring de herramientas al objetivo
+
+            for _, tool in pairs(player.Character:GetChildren()) do  
+
+                if tool:IsA("Tool") then  
+
+                    local toolPart = tool:FindFirstChild("Handle")  
+
+                    if toolPart then  
+
+                        -- Teletransportación inmediata del tool al objetivo
+
+                        toolPart.Position = targetHRP.Position + Vector3.new(0, 2, 0)  
+
+                    else  
+
+                        -- Aseguramos que la posición se teletransporte al objetivo de forma instantánea
+
+                        tool:SetPrimaryPartCFrame(targetHRP.CFrame * CFrame.new(0, 2, 0))  
+
+                    end  
+
+                end  
+
+            end  
+
+        else  
+
+            frame.Visible = false  
+
+            targetPlayer = nil  
+
+        end  
+
+    end)
+
+end
+
+-- Auto-activar el seguimiento
+
+followTarget()
+
+-- Función para activar/desactivar el hitbox con una tecla
+
+UserInputService.InputBegan:Connect(function(input, isProcessed)
+
+    if not isProcessed and input.KeyCode == _G.ToggleKey then
+
+        _G.Disabled = not _G.Disabled
+
+    end
+
+end)
+
+-- Hitbox con detección de distancia
+
+RunService.RenderStepped:Connect(function()
+
+    if not _G.Disabled then
+
+        local localPlayer = game.Players.LocalPlayer
+
+        for _, v in pairs(game.Players:GetPlayers()) do
+
+            if v ~= localPlayer and v.Character and v.Character:FindFirstChild("Head") then
+
+                pcall(function()
+
+                    v.Character.Head.Size = Vector3.new(_G.HeadSize, _G.HeadSize, _G.HeadSize)
+
+                    v.Character.Head.Transparency = 1
+
+                    v.Character.Head.BrickColor = BrickColor.new("Red")
+
+                    v.Character.Head.Material = "Neon"
+
+                    v.Character.Head.CanCollide = false
+
+                    v.Character.Head.Massless = true
+
+                    local hitbox = v.Character:FindFirstChild("Hitbox")  
+
+                    if not hitbox then  
+
+                        hitbox = Instance.new("Part")  
+
+                        hitbox.Name = "Hitbox"  
+
+                        hitbox.Size = _G.HitboxSize  
+
+                        hitbox.Transparency = 0.8  
+
+                        hitbox.BrickColor = BrickColor.new("Bright green")  
+
+                        hitbox.Material = "Neon"  
+
+                        hitbox.CanCollide = false  
+
+                        hitbox.Massless = true  
+
+                        hitbox.Anchored = false  
+
+                        hitbox.CFrame = v.Character.Head.CFrame  
+
+                        hitbox.Parent = v.Character  
+
+                        local weld = Instance.new("WeldConstraint")  
+
+                        weld.Part0 = v.Character.Head  
+
+                        weld.Part1 = hitbox  
+
+                        weld.Parent = hitbox  
+
+                    end  
+
+                    hitbox.CFrame = v.Character.Head.CFrame  
+
+                    local distance = (localPlayer.Character.HumanoidRootPart.Position - v.Character.HumanoidRootPart.Position).Magnitude  
+
+                    if distance <= detectionRange then  
+
+                        local distanceGui = hitbox:FindFirstChild("DistanceGui")  
+
+                        if not distanceGui then  
+
+                            distanceGui = Instance.new("BillboardGui")  
+
+                            distanceGui.Name = "DistanceGui"  
+
+                            distanceGui.Adornee = hitbox  
+
+                            distanceGui.Size = UDim2.new(0, 200, 0, 50)  
+
+                            distanceGui.StudsOffset = Vector3.new(0, 3, 0)  
+
+                            distanceGui.Parent = hitbox  
+
+                            local textLabel = Instance.new("TextLabel")  
+
+                            textLabel.Name = "DistanceLabel"  
+
+                            textLabel.Size = UDim2.new(1, 0, 1, 0)  
+
+                            textLabel.BackgroundTransparency = 1  
+
+                            textLabel.TextColor3 = Color3.new(1, 1, 1)  
+
+                            textLabel.TextStrokeTransparency = 0.5  
+
+                            textLabel.TextScaled = true  
+
+                            textLabel.Parent = distanceGui  
+
+                        end  
+
+                        local distanceLabel = distanceGui:FindFirstChild("DistanceLabel")  
+
+                        if distanceLabel then  
+
+                            distanceLabel.Text = string.format("Distance: %.0f meters", distance)  
+
+                        end  
+
+                        -- Cambiar color del hitbox dependiendo de la salud  
+
+                        if v.Character:FindFirstChildOfClass("Humanoid") then  
+
+                            local health = v.Character.Humanoid.Health  
+
+                            if health < 50 then  
+
+                                hitbox.BrickColor = BrickColor.new("Bright red")  
+
+                            else  
+
+                                hitbox.BrickColor = BrickColor.new("Bright green")  
+
+                            end  
+
+                        end  
+
+                    end  
+
+                end)  
+
+            end  
+
+        end  
+
+    end  
+
+end)

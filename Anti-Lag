@@ -1,0 +1,118 @@
+--================================================
+-- ⚡ ULTRA ANTI-LAG / FPS BOOSTER
+--================================================
+
+local Lighting = game:GetService("Lighting")
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+
+local LocalPlayer = Players.LocalPlayer
+
+------------------------------------------------
+-- LIGHTING OPTIMIZATION
+------------------------------------------------
+
+Lighting.GlobalShadows = false
+Lighting.FogEnd = 9e9
+Lighting.Brightness = 1
+Lighting.EnvironmentDiffuseScale = 0
+Lighting.EnvironmentSpecularScale = 0
+
+for _,v in ipairs(Lighting:GetChildren()) do
+	if v:IsA("PostEffect") then
+		v.Enabled = false
+	end
+end
+
+------------------------------------------------
+-- REMOVE PARTICLES / FIRE / SMOKE
+------------------------------------------------
+
+local function cleanEffects(obj)
+
+	if obj:IsA("ParticleEmitter")
+	or obj:IsA("Trail")
+	or obj:IsA("Smoke")
+	or obj:IsA("Fire")
+	or obj:IsA("Sparkles") then
+	
+		obj.Enabled = false
+		
+	end
+
+end
+
+for _,v in ipairs(workspace:GetDescendants()) do
+	cleanEffects(v)
+end
+
+workspace.DescendantAdded:Connect(cleanEffects)
+
+------------------------------------------------
+-- TEXTURE REDUCTION
+------------------------------------------------
+
+local function simplifyPart(part)
+
+	if part:IsA("BasePart") then
+		
+		part.Material = Enum.Material.Plastic
+		part.Reflectance = 0
+		
+	end
+	
+	if part:IsA("Decal") or part:IsA("Texture") then
+		part.Transparency = 1
+	end
+
+end
+
+for _,v in ipairs(workspace:GetDescendants()) do
+	simplifyPart(v)
+end
+
+workspace.DescendantAdded:Connect(simplifyPart)
+
+------------------------------------------------
+-- DESTROY HEAVY VISUALS
+------------------------------------------------
+
+local function removeHeavy(obj)
+
+	if obj:IsA("Explosion")
+	or obj:IsA("Beam")
+	or obj:IsA("Highlight") then
+	
+		obj:Destroy()
+		
+	end
+
+end
+
+workspace.DescendantAdded:Connect(removeHeavy)
+
+------------------------------------------------
+-- RENDER SETTINGS
+------------------------------------------------
+
+settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+
+------------------------------------------------
+-- MEMORY CLEANER
+------------------------------------------------
+
+task.spawn(function()
+
+	while true do
+	
+		task.wait(30)
+		
+		pcall(function()
+			collectgarbage("collect")
+		end)
+		
+	end
+
+end)
+
+print("⚡ Ultra Anti-Lag Loaded")

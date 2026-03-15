@@ -611,9 +611,9 @@ welcomeText.Text = "Welcome to the 01_ii SPT Hub, built from scratch, cleanest h
 welcomeText.Parent = pageWelcome
 
 local Welcome = {
-    {"Get Base", "https://pastefy.app/f1MB0geh/raw"},
-    {"Respawn V4", "https://pastefy.app/AEXGWk46/raw"},
-    {"Get Tools", "https://pastefy.app/ETV5pszW/raw"},
+    {"Get Base", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Get%20Base"},
+    {"Respawn V4", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Respawn"},
+    {"Get Tools", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Tool%20Grabber"},
 }
 
 for i, t in ipairs(Welcome) do

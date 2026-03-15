@@ -757,14 +757,14 @@ toolsHeader.Text = "Tool Scripts"
 toolsHeader.Parent = toolsPage
 
 local tools = {
-    {"No Cooldown", "https://pastefy.app/jEP0ZLtt/raw"},
-    {"Use Tools", "https://pastefy.app/612XiGJc/raw"},
-    {"NoAnimTools", "https://pastefy.app/KZal4oLT/raw"},
-    {"Normla Kill Aura", "https://pastefy.app/cHB18FKG/raw"},
-    {"Insta-Kill-Aura", "https://pastefy.app/tvkHyFmo/raw"},
-    {"Loop Tools", "https://pastefy.app/ke1I4ZRo/raw"},
-    {"Grip V2", "https://pastefy.app/8tTxqvGe/raw"},
-    {"Float", "https://pastefy.app/ceAeq4Ka/raw"},
+    {"No Cooldown", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/No%20Cooldown"},
+    {"Use Tools", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Use%20Tools"},
+    {"NoAnimTools", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/No%20Anim%20Tools"},
+    {"Normla Kill Aura", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Kill%20Aura"},
+    {"Insta-Kill-Aura", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Insta-Kill/raw"},
+	{"Loop Tools", "https://pastefy.app/ke1I4ZRo/raw"},
+    {"Grip V2", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Grip"},
+    {"Float", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Float%20Tools"},
 }
 for i, t in ipairs(tools) do
     local row = createActionButton(t[1], t[2])
@@ -784,13 +784,13 @@ pHeader.Text = "Player Scripts"
 pHeader.Parent = playerPage
 
 local playerScripts = {
-    {"Target Aura", "https://pastefy.app/ZGI2o90I/raw"},
-    {"Loopbring", "https://pastefy.app/KZal4oLT/raw"},
-    {"Damage", "https://pastefy.app/a8JSv1B6/raw"},
-    {"Hit Amplifier", "https://pastefy.app/FblnYwzJ/raw"},
-    {"OP Anti-Lag", "https://pastefy.app/IPiddW47/raw"},
-    {"PermaDeath", "https://pastefy.app/X7xlKuC1/raw"},
-    {"WalkingGodMode", "https://pastefy.app/OGXjFPak/raw"},
+    {"Target Aura", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Target%20Aura"},
+    {"Loopbring", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Loopbring"},
+    {"Damage", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Damage"},
+    {"Hit Amplifier", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Hit%20Amplifier"},
+    {"Anti-Lag", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Anti-Lag"},
+    {"PermaDeath", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/PermaDeath"},
+    {"WalkingGodMode", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Walking%20God"},
     {"Infinite Yield", "https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source"},
 }
 for i,t in ipairs(playerScripts) do

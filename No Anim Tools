@@ -1,0 +1,171 @@
+-- ⚡ NO-ANIM TOOLS — PING-SAFE ULTRA ENGINE ⚡
+-- Fastest and safest possible version.
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+local heartbeat = RunService.Heartbeat
+
+---------------------------------------------------------------------
+-- UI
+---------------------------------------------------------------------
+local gui = Instance.new("ScreenGui")
+gui.Name = "NoAnimTools"
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Global
+gui.Parent = game:GetService("CoreGui")
+
+local button = Instance.new("TextButton")
+button.Size = UDim2.new(0,165,0,65)
+button.AnchorPoint = Vector2.new(1,0.5)
+button.Position = UDim2.new(1,-30,0.5,0)
+button.TextSize = 22
+button.Font = Enum.Font.GothamBold
+button.BorderColor3 = Color3.fromRGB(0,0,0)
+button.BorderSizePixel = 2
+button.BackgroundColor3 = Color3.fromRGB(255,255,255)
+button.TextColor3 = Color3.fromRGB(0,0,0)
+button.Text = "NoAnimTools: OFF"
+button.Active = true
+button.Draggable = true
+button.Parent = gui
+
+Instance.new("UICorner", button).CornerRadius = UDim.new(0.35,0)
+
+---------------------------------------------------------------------
+-- STATE
+---------------------------------------------------------------------
+local active = false
+local running = false
+
+local function updateButton()
+    if active then
+        button.Text = "NoAnimTools: ON"
+        button.TextColor3 = Color3.fromRGB(0,0,0)
+    else
+        button.Text = "NoAnimTools: OFF"
+        button.TextColor3 = Color3.fromRGB(100,100,100)
+    end
+end
+
+---------------------------------------------------------------------
+-- ⚡ HYPER TOOL CACHE
+---------------------------------------------------------------------
+local TOOL_SCAN_RATE = 0.25
+local BURST = 3                -- activation bursts per tick
+local INTERNAL_RATE = 1/240    -- internal fire rhythm
+
+local cachedTools = {}
+local lastScan = 0
+local acc = 0
+
+local function scanTools()
+
+	table.clear(cachedTools)
+
+	local char = player.Character
+	local bp = player:FindFirstChild("Backpack")
+
+	if bp then
+		for _,t in ipairs(bp:GetChildren()) do
+			if t:IsA("Tool") then
+				table.insert(cachedTools, t)
+			end
+		end
+	end
+
+	if char then
+		for _,t in ipairs(char:GetChildren()) do
+			if t:IsA("Tool") then
+				table.insert(cachedTools, t)
+			end
+		end
+	end
+
+end
+
+local function forceEquip()
+
+	local char = player.Character
+	if not char then return end
+
+	for i = 1,#cachedTools do
+		local tool = cachedTools[i]
+		if tool.Parent ~= char then
+			tool.Parent = char
+		end
+	end
+
+end
+
+local function burstActivate()
+
+	for b = 1, BURST do
+		for i = 1,#cachedTools do
+			local tool = cachedTools[i]
+			if tool.Parent then
+				pcall(tool.Activate, tool)
+			end
+		end
+	end
+
+end
+
+---------------------------------------------------------------------
+-- ⚡ MAIN ENGINE (FRAME SYNCHED)
+---------------------------------------------------------------------
+local function engine()
+	if running then return end
+	running = true
+
+	RunService.Heartbeat:Connect(function(dt)
+
+		if not active then return end
+
+		acc += dt
+
+		if tick() - lastScan > TOOL_SCAN_RATE then
+			lastScan = tick()
+			scanTools()
+		end
+
+		forceEquip()
+
+		while acc >= INTERNAL_RATE do
+			acc -= INTERNAL_RATE
+			burstActivate()
+		end
+
+	end)
+end
+
+---------------------------------------------------------------------
+-- TOGGLE
+---------------------------------------------------------------------
+local function toggleState()
+    active = not active
+    updateButton()
+
+    if active then fastEquip() end
+    engine()
+end
+
+button.MouseButton1Click:Connect(toggleState)
+
+UIS.InputBegan:Connect(function(input,gp)
+    if not gp and input.KeyCode == Enum.KeyCode.Q then
+        toggleState()
+    end
+end)
+
+player.CharacterAdded:Connect(function()
+    task.wait(0.05)
+    if active then fastEquip() end
+end)
+
+updateButton()
+engine()
+
+print("⚡ NO-ANIM TOOLS ENGINE ONLINE — Ultra Fast & Ping Safe")

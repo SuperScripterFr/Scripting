@@ -1,0 +1,241 @@
+-- Servicios
+
+local Players = game:GetService("Players")
+
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+
+-- ParÃ¡metros
+
+local auraRange = 25 -- Leve aumento para asegurar detecciÃ³n
+
+local forcePower = 1e7 -- Aumentado para mÃ¡xima efectividad
+
+local character = player.Character or player.CharacterAdded:Wait()
+
+-- Verificar si el jugador estÃ¡ muerto
+
+local function IsPlayerDead()
+
+	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")	return humanoid and humanoid.Health <= 0
+
+end
+
+-- Remover cualquier BodyVelocity o BodyPosition
+
+local function CleanPhysics(tool)
+
+	local handle = tool:FindFirstChild("Handle")
+
+	if handle then
+
+		local bv = handle:FindFirstChild("BodyVelocity")
+
+		if bv then bv:Destroy() end
+
+		local bp = handle:FindFirstChild("BodyPosition")
+
+		if bp then bp:Destroy() end
+
+	end
+
+end
+
+-- Aplicar BodyVelocity para dejar las herramientas flotando
+
+local function SetToolGravityZero()
+
+	for _, tool in ipairs(player.Character:GetChildren()) do
+
+		if tool:IsA("Tool") and tool:FindFirstChild("Handle") then
+
+			local handle = tool.Handle
+
+			local bv = handle:FindFirstChild("BodyVelocity") or Instance.new("BodyVelocity")
+
+			bv.MaxForce = Vector3.new(forcePower, forcePower, forcePower)
+
+			bv.Velocity = Vector3.new(0, 0, 0)
+
+			bv.Parent = handle
+
+		end
+
+	end
+
+end
+
+-- Detectar el jugador mÃ¡s cercano
+
+local function GetClosestPlayer()
+
+	local closest, closestDist = nil, auraRange
+
+	local myHRP = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+
+	if not myHRP then return nil end
+
+	for _, other in ipairs(Players:GetPlayers()) do
+
+		if other ~= player and other.Character and other.Character:FindFirstChild("HumanoidRootPart") then
+
+			local humanoid = other.Character:FindFirstChildOfClass("Humanoid")
+
+			if humanoid and humanoid.Health > 0 then
+
+				local dist = (other.Character.HumanoidRootPart.Position - myHRP.Position).Magnitude
+
+				if dist < closestDist then
+
+					closestDist = dist
+
+					closest = other.Character
+
+				end
+
+			end
+
+		end
+
+	end
+
+	return closest
+
+end
+
+-- Hacer que la tool siga al jugador mÃ¡s cercano
+
+local function FollowTool(tool, target)
+
+	local handle = tool:FindFirstChild("Handle")
+
+	if not handle then return end
+
+	local bp = handle:FindFirstChild("BodyPosition") or Instance.new("BodyPosition")
+
+	bp.MaxForce = Vector3.new(forcePower, forcePower, forcePower)
+
+	bp.D = 10
+
+	bp.P = 10000
+
+	bp.Parent = handle
+
+	if target and target:FindFirstChild("HumanoidRootPart") then
+
+		bp.Position = target.HumanoidRootPart.Position
+
+	else
+
+		bp.Position = handle.Position
+
+	end
+
+end
+
+-- Ajustar el grip de la tool para mÃ¡xima precisiÃ³n
+
+local function AdjustGrip(tool)
+
+	if tool:IsA("Tool") then
+
+		tool.Grip = CFrame.new(0, 0, 0)
+
+	end
+
+end
+
+-- Ajustar grips de todas las herramientas y preparar
+
+local function SetupCharacter(char)
+
+	char:WaitForChild("HumanoidRootPart")
+
+	for _, tool in ipairs(char:GetChildren()) do
+
+		AdjustGrip(tool)
+
+	end
+
+	char.ChildAdded:Connect(function(child)
+
+		if child:IsA("Tool") then
+
+			AdjustGrip(child)
+
+		end
+
+	end)
+
+end
+
+-- ConfiguraciÃ³n inicial
+
+player.CharacterAdded:Connect(function(char)
+
+	wait(0.3)
+
+	SetupCharacter(char)
+
+end)
+
+if player.Character then
+
+	SetupCharacter(player.Character)
+
+end
+
+player.Backpack.ChildAdded:Connect(function(tool)
+
+	if tool:IsA("Tool") then
+
+		tool.AncestryChanged:Connect(function()
+
+			if tool.Parent == player.Character then
+
+				AdjustGrip(tool)
+
+			end
+
+		end)
+
+	end
+
+end)
+
+-- Loop principal optimizado y limpio
+
+RunService.Heartbeat:Connect(function()
+
+	if IsPlayerDead() then
+
+		SetToolGravityZero()
+
+		local target = GetClosestPlayer()
+
+		for _, tool in ipairs(player.Character:GetChildren()) do
+
+			if tool:IsA("Tool") then
+
+				FollowTool(tool, target)
+
+			end
+
+		end
+
+	else
+
+		for _, tool in ipairs(player.Character:GetChildren()) do
+
+			if tool:IsA("Tool") then
+
+				CleanPhysics(tool)
+
+			end
+
+		end
+
+	end
+
+end)

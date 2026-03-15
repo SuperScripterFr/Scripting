@@ -1,0 +1,217 @@
+--=====================================================
+-- ⚡ ULTRA RESPawn V4 (Lag Free)
+-- Instant • Stable • No Listener Stacking
+--=====================================================
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local LocalPlayer = Players.LocalPlayer
+local GuideEvent = ReplicatedStorage:FindFirstChild("Guide")
+
+-----------------------------------------------------
+-- STATE
+-----------------------------------------------------
+
+local Active = false
+local Character
+local Humanoid
+
+local respawning = false
+local connections = {}
+
+-----------------------------------------------------
+-- CLEANUP
+-----------------------------------------------------
+
+local function disconnectAll()
+	for _,c in pairs(connections) do
+		if c and c.Connected then
+			c:Disconnect()
+		end
+	end
+	table.clear(connections)
+end
+
+-----------------------------------------------------
+-- RESPAWN
+-----------------------------------------------------
+
+local function fireRespawn()
+
+	if respawning then return end
+	respawning = true
+
+	task.spawn(function()
+
+		if GuideEvent then
+			pcall(function()
+				GuideEvent:FireServer()
+			end)
+		else
+			pcall(function()
+				LocalPlayer:LoadCharacter()
+			end)
+		end
+
+		task.wait(0.25)
+		respawning = false
+
+	end)
+
+end
+
+-----------------------------------------------------
+-- CHARACTER HOOK
+-----------------------------------------------------
+
+local function hookCharacter(char)
+
+	disconnectAll()
+
+	Character = char
+	Humanoid = char:WaitForChild("Humanoid",2)
+
+	if not Humanoid then return end
+
+	respawning = false
+
+	table.insert(connections,
+		Humanoid.Died:Connect(function()
+			if Active then
+				fireRespawn()
+			end
+		end)
+	)
+
+	table.insert(connections,
+		Humanoid.HealthChanged:Connect(function(hp)
+			if Active and hp <= 0 then
+				fireRespawn()
+			end
+		end)
+	)
+
+end
+
+-----------------------------------------------------
+-- ENABLE / DISABLE
+-----------------------------------------------------
+
+local function enable()
+
+	if Active then return end
+	Active = true
+
+	if LocalPlayer.Character then
+		hookCharacter(LocalPlayer.Character)
+	end
+
+	table.insert(connections,
+		LocalPlayer.CharacterAdded:Connect(function(c)
+			hookCharacter(c)
+		end)
+	)
+
+end
+
+local function disable()
+
+	if not Active then return end
+	Active = false
+	disconnectAll()
+
+end
+
+-----------------------------------------------------
+-- UI
+-----------------------------------------------------
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "UltraRespawn"
+gui.ResetOnSpawn = false
+gui.Parent = LocalPlayer.PlayerGui
+
+local panel = Instance.new("Frame")
+panel.Size = UDim2.fromOffset(200,60)
+panel.Position = UDim2.fromScale(0.5,0.85)
+panel.AnchorPoint = Vector2.new(.5,.5)
+panel.BackgroundColor3 = Color3.fromRGB(0,0,0)
+panel.Active = true
+panel.Draggable = true
+panel.Parent = gui
+
+Instance.new("UICorner",panel).CornerRadius = UDim.new(0,18)
+
+local stroke = Instance.new("UIStroke",panel)
+stroke.Color = Color3.fromRGB(0,0,255)
+stroke.Thickness = 1.4
+stroke.Transparency = 0.3
+
+local btn = Instance.new("TextButton")
+btn.Size = UDim2.fromScale(1,1)
+btn.BackgroundTransparency = 1
+btn.Font = Enum.Font.GothamBold
+btn.TextSize = 16
+btn.TextColor3 = Color3.fromRGB(0,0,255)
+btn.Parent = panel
+
+-----------------------------------------------------
+-- UI REFRESH
+-----------------------------------------------------
+
+local function refresh()
+
+	btn.Text = Active and "RESPAWN: ON" or "RESPAWN: OFF"
+
+	TweenService:Create(
+		stroke,
+		TweenInfo.new(.25),
+		{Transparency = Active and 0 or .4}
+	):Play()
+
+end
+
+-----------------------------------------------------
+-- BUTTON
+-----------------------------------------------------
+
+btn.MouseButton1Click:Connect(function()
+
+	if Active then
+		disable()
+	else
+		enable()
+	end
+
+	refresh()
+
+end)
+
+-----------------------------------------------------
+-- KEYBIND
+-----------------------------------------------------
+
+UserInputService.InputBegan:Connect(function(input,gp)
+
+	if gp then return end
+
+	if input.KeyCode == Enum.KeyCode.R then
+
+		if Active then
+			disable()
+		else
+			enable()
+		end
+
+		refresh()
+
+	end
+
+end)
+
+refresh()
+
+print("⚡ Ultra Respawn V4 Loaded (Lag-Free)")

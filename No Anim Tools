@@ -114,6 +114,26 @@ local function burstActivate()
 end
 
 ---------------------------------------------------------------------
+-- ⚡ ANIMATION SUPPRESSION LAYER (REAL NO-ANIM)
+---------------------------------------------------------------------
+local function killAnimations()
+
+	local char = player.Character
+	if not char then return end
+
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if not hum then return end
+
+	local animator = hum:FindFirstChildOfClass("Animator")
+	if not animator then return end
+
+	for _,track in ipairs(animator:GetPlayingAnimationTracks()) do
+		track:Stop(0)
+	end
+
+end
+
+---------------------------------------------------------------------
 -- ⚡ MAIN ENGINE (FRAME SYNCHED)
 ---------------------------------------------------------------------
 local function engine()
@@ -132,6 +152,8 @@ local function engine()
 		end
 
 		forceEquip()
+
+		killAnimations()
 
 		while acc >= INTERNAL_RATE do
 			acc -= INTERNAL_RATE

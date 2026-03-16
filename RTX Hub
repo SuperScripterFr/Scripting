@@ -10,29 +10,6 @@ local TextChatService = game:GetService("TextChatService")
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
--- ======= Hub Whitelist =======
-local whitelist = {
-    [3972688973] = true, -- Main Acc
-    [2522193455] = true, -- (Alt)
-    [5146822757] = true, -- (Alt)
-    [5054998059] = true, -- (Alt)
-    [7820186858] = true, -- (Alt)
-    [10076835118] = true, -- (Alt)
-    [5041628737] = true, -- (Alt)
-    [4449347130] = true, -- (Alt)
-    [2416167297] = true, -- (Alt)
-    [2647384879] = true, -- (Alt)
-    [3816480506] = true, -- (Alt)
-    [1989950303] = true, -- Lucky
-	[4978983307] = true, -- Cheto
-}
-
-
-if not whitelist[LocalPlayer.UserId] then
-    LocalPlayer:Kick("Nice try brother. but you failed to get access. try again later.")
-    return
-end
-
 -- ======= Config / Defaults (preserved) =======
 local DEFAULT_THEME = {
     Accent = Color3.fromRGB(98, 53, 255),

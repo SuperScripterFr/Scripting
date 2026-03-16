@@ -68,58 +68,51 @@ end
 LocalPlayer.CharacterAdded:Connect(hookCharacter)
 
 --================================================
--- ⚡ ULTRA COMBAT LOOP (OPTIMIZED)
+-- ⚡ PING SAFE POWER CORE (NO REMOTE FLOOD)
 --================================================
 
-local RANGE = 20
-local RANGE_SQ = RANGE * RANGE
+local INTERNAL_RATE = 1/180      -- base rhythm (increase for more power)
+local BURST = 2                  -- activation bursts
+local TOOL_SCAN = 0.4
 
-local enemyCache = {}
+local toolCache = {}
 local lastScan = 0
-local SCAN_RATE = 0.35 -- scan players 3x per second instead of every frame
+local acc = 0
 
-local function updateEnemyCache()
+local function scanTools()
 
-	table.clear(enemyCache)
+	table.clear(toolCache)
 
-	for _,player in ipairs(Players:GetPlayers()) do
-		if player ~= LocalPlayer then
-			table.insert(enemyCache, player)
+	local char = Character
+	if not char then return end
+
+	for _,v in ipairs(char:GetChildren()) do
+		if v:IsA("Tool") then
+			table.insert(toolCache, v)
 		end
 	end
 
 end
 
-RunService.Heartbeat:Connect(function()
+RunService.Heartbeat:Connect(function(dt)
 
 	if not Character then return end
-	if not FightEvent then return end
 
-	local hrp = Character:FindFirstChild("HumanoidRootPart")
-	if not hrp then return end
+	acc += dt
 
-	-- update player cache occasionally
-	if tick() - lastScan > SCAN_RATE then
+	if tick() - lastScan > TOOL_SCAN then
 		lastScan = tick()
-		updateEnemyCache()
+		scanTools()
 	end
 
-	local myPos = hrp.Position
+	while acc >= INTERNAL_RATE do
+		acc -= INTERNAL_RATE
 
-	for i = 1, #enemyCache do
-
-		local player = enemyCache[i]
-		local char = player.Character
-		if not char then continue end
-
-		local enemyHRP = char:FindFirstChild("HumanoidRootPart")
-		if not enemyHRP then continue end
-
-		local diff = myPos - enemyHRP.Position
-
-		-- squared distance check (WAY faster)
-		if diff:Dot(diff) <= RANGE_SQ then
-			FightEvent:FireServer(enemyHRP)
+		for b = 1, BURST do
+			for i = 1, #toolCache do
+				local tool = toolCache[i]
+				pcall(tool.Activate, tool)
+			end
 		end
 
 	end

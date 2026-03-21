@@ -1,28 +1,37 @@
--- ⚡ ULTRA-INSTANT RESPAWN (LAG SAFE)
+-- ⚡ QUANTUM INSTANT RESPAWN ENGINE
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UIS = game:GetService("UserInputService")
 
-local LocalPlayer = Players.LocalPlayer
+local player = Players.LocalPlayer
 local GuideEvent = ReplicatedStorage:FindFirstChild("Guide")
 
 local TOGGLE_KEY = Enum.KeyCode.R
 
 local active = false
 local lastRespawn = 0
-local RESPAWN_COOLDOWN = 0.35 -- prevents spawn-kill lag bursts
 
+local RESPAWN_COOLDOWN = 0.05   -- near theoretical safe minimum
+local FAILSAFE_REFIRE = 0.5      -- only if server ignores first
+
+local diedLock = false
 local diedConn
+local stateConn
 local charConn
 
-local function doRespawn()
+--==================================================
+-- ⚡ TRUE INSTANT RESPAWN FIRE
+--==================================================
 
-	local now = tick()
-	if now - lastRespawn < RESPAWN_COOLDOWN then
-		return
-	end
+local function fireRespawn()
 
+	local now = os.clock()
+
+	if diedLock then return end
+	if now - lastRespawn < RESPAWN_COOLDOWN then return end
+
+	diedLock = true
 	lastRespawn = now
 
 	if GuideEvent then
@@ -31,60 +40,102 @@ local function doRespawn()
 		end)
 	else
 		pcall(function()
-			LocalPlayer:LoadCharacter()
+			player:LoadCharacter()
 		end)
 	end
 
+	-- failsafe re-fire ONLY if still dead later
+	task.delay(FAILSAFE_REFIRE,function()
+
+		local char = player.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+
+		if hum and hum.Health <= 0 then
+
+			pcall(function()
+				if GuideEvent then
+					GuideEvent:FireServer()
+				else
+					player:LoadCharacter()
+				end
+			end)
+
+		end
+
+		diedLock = false
+
+	end)
+
 end
+
+--==================================================
+-- ⚡ CHARACTER HOOK
+--==================================================
 
 local function hookCharacter(char)
 
-	if diedConn then
-		diedConn:Disconnect()
-	end
+	diedLock = false
 
-	local hum = char:WaitForChild("Humanoid",2)
+	if diedConn then diedConn:Disconnect() end
+	if stateConn then stateConn:Disconnect() end
+
+	local hum = char:WaitForChild("Humanoid",1)
 	if not hum then return end
 
+	-- ultra early detection
+	stateConn = hum.StateChanged:Connect(function(_,new)
+
+		if not active then return end
+
+		if new == Enum.HumanoidStateType.Dead then
+			fireRespawn()
+		end
+
+	end)
+
+	-- backup detection
 	diedConn = hum.Died:Connect(function()
 		if active then
-			task.defer(doRespawn)
+			fireRespawn()
 		end
 	end)
 
 end
 
+--==================================================
+-- ⚡ TOGGLE
+--==================================================
+
 local function toggle()
 
 	active = not active
 
-	if charConn then
-		charConn:Disconnect()
-	end
-
-	if diedConn then
-		diedConn:Disconnect()
-	end
+	if charConn then charConn:Disconnect() end
+	if diedConn then diedConn:Disconnect() end
+	if stateConn then stateConn:Disconnect() end
 
 	if active then
-		print("⚡ Auto Respawn ON")
 
-		charConn = LocalPlayer.CharacterAdded:Connect(hookCharacter)
+		print("⚡ Quantum Respawn ON")
 
-		if LocalPlayer.Character then
-			hookCharacter(LocalPlayer.Character)
+		charConn = player.CharacterAdded:Connect(hookCharacter)
+
+		if player.Character then
+			hookCharacter(player.Character)
 		end
 
 	else
-		print("⚡ Auto Respawn OFF")
+
+		print("⚡ Quantum Respawn OFF")
+
 	end
 
 end
 
-UIS.InputBegan:Connect(function(input,gp)
-	if not gp and input.KeyCode == TOGGLE_KEY then
+UIS.InputBegan:Connect(function(i,gp)
+	if not gp and i.KeyCode == TOGGLE_KEY then
 		toggle()
 	end
 end)
 
-print("⚡ Instant Respawn Ready")
+print("⚡ Quantum Respawn Ready")

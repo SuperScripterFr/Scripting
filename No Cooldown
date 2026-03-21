@@ -71,7 +71,7 @@ LocalPlayer.CharacterAdded:Connect(hookCharacter)
 -- ⚡ PING SAFE POWER CORE (NO REMOTE FLOOD)
 --================================================
 
-local INTERNAL_RATE = 1/180      -- base rhythm (increase for more power)
+local INTERNAL_RATE = 1/go      -- base rhythm (increase for more power)
 local BURST = 2                  -- activation bursts
 local TOOL_SCAN = 0.4
 

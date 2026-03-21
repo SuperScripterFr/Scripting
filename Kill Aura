@@ -1,113 +1,107 @@
--- ⚡ ULTRA KILL AURA — MICRO BURST ESCAPE MODE ⚡
+-- CONFIG
+local auraRange = 20 -- Distance to target players
+local auraSize = Vector3.new(30, 30, 30)
+local attackRate = 0.01 -- Time between aura scans
 
+-- SERVICES
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local lp = Players.LocalPlayer
+local LocalPlayer = Players.LocalPlayer
 
--- CONFIG
-local auraRange = 20
-local auraSize = Vector3.new(30,30,30)
+-- AURA STATE
+local running = true
+local auraParams = OverlapParams.new()
+auraParams.FilterType = Enum.RaycastFilterType.Include
 
--- STATE
-local Run = true
-local connections = {}
-local IgnoreList = OverlapParams.new()
-IgnoreList.FilterType = Enum.RaycastFilterType.Include
-
--- HELPERS
-local function GetCharacter(plr)
-	return (plr or lp).Character
+-- HELPER FUNCTIONS
+local function getChar(plr)
+    return plr and plr.Character
 end
 
-local function GetHumanoid(plr)
-	local char = plr:IsA("Model") and plr or GetCharacter(plr)
-	return char and char:FindFirstChildWhichIsA("Humanoid")
+local function getHumanoidRootPart(plr)
+    local char = getChar(plr)
+    return char and char:FindFirstChild("HumanoidRootPart")
 end
 
-local function GetTouchPart(tool)
-	return tool and tool:FindFirstChildWhichIsA("TouchTransmitter", true) and tool:FindFirstChildWhichIsA("TouchTransmitter", true).Parent
+local function getValidTargets()
+    local myChar = getChar(LocalPlayer)
+    local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    if not myHRP then return {} end
+
+    local targets = {}
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local hrp = getHumanoidRootPart(player)
+            if hrp and (hrp.Position - myHRP.Position).Magnitude <= auraRange then
+                table.insert(targets, player)
+            end
+        end
+    end
+    return targets
 end
 
-local function GetEnemyCharacters(localChar)
-	local characters = {}
-	for _, p in ipairs(Players:GetPlayers()) do
-		local char = GetCharacter(p)
-		if char and char ~= localChar then
-			table.insert(characters, char)
-		end
-	end
-	return characters
+local function getTouchPart(tool)
+    local ti = tool and tool:FindFirstChildWhichIsA("TouchTransmitter", true)
+    return ti and ti.Parent
 end
 
-local function ActivateTool(tool)
-	if tool:IsDescendantOf(workspace) then
-		task.spawn(function()
-			pcall(tool.Activate, tool)
-		end)
-	end
+local function autoActivate(tool)
+    if not tool:IsDescendantOf(workspace) then
+        tool.Parent = getChar(LocalPlayer)
+    end
+    tool:Activate()
 end
 
--- DAMAGE APPLICATION
-local function ApplyDamage(Tools, Characters, TouchPart)
-	if not TouchPart then return end
-	local InstancesInBox = workspace:GetPartBoundsInBox(
-		TouchPart.CFrame,
-		TouchPart.Size + auraSize,
-		IgnoreList
-	)
-	local totalDamage = #Tools
-	for _, v in ipairs(InstancesInBox) do
-		local Character = v:FindFirstAncestorWhichIsA("Model")
-		if Character and table.find(Characters, Character) then
-			for _ = 1, totalDamage do
-				task.spawn(function()
-					firetouchinterest(TouchPart, v, 1)
-					firetouchinterest(TouchPart, v, 0)
-				end)
-			end
-		end
-	end
-end
+-- MAIN LOOP
+task.spawn(function()
+    while running do
+        local myChar = getChar(LocalPlayer)
+        local tools = {}
+        local targets = getValidTargets()
 
--- SPAWN / RESPAWN HANDLER
-local function OnCharacterSpawned()
-	local char = GetCharacter()
-	if not char then return end
+        local enemyChars = {}
+        for _, player in ipairs(targets) do
+            local char = getChar(player)
+            if char then table.insert(enemyChars, char) end
+        end
+        auraParams.FilterDescendantsInstances = enemyChars
 
-	local Tools = {}
-	local Characters = GetEnemyCharacters(char)
-	IgnoreList.FilterDescendantsInstances = Characters
+        for _, tool in ipairs(myChar:GetChildren()) do
+            if tool:IsA("Tool") then
+                local fightEvent = tool:FindFirstChild("FightEvent")
+                local touchPart = getTouchPart(tool)
 
-	for _, tool in ipairs(char:GetChildren()) do
-		if tool:IsA("Tool") and GetTouchPart(tool) then
-			table.insert(Tools, tool)
-			local TouchPart = GetTouchPart(tool)
-			ActivateTool(tool)           -- immediate activation
-			ApplyDamage(Tools, Characters, TouchPart) -- immediate micro burst
-		end
-	end
-end
+                if fightEvent then
+                    autoActivate(tool)
+                    for _, _ in ipairs(targets) do
+                        fightEvent:FireServer()
+                    end
+                end
 
-lp.CharacterAdded:Connect(OnCharacterSpawned)
+                if touchPart then
+                    local partsInBox = workspace:GetPartBoundsInBox(
+                        touchPart.CFrame,
+                        touchPart.Size + auraSize,
+                        auraParams
+                    )
 
--- MAIN LOOP (MAX RESPONSE)
-RunService.Stepped:Connect(function()
-	if not Run then return end
-	local char = GetCharacter()
-	if not char then return end
-	local humanoid = GetHumanoid(char)
-	if not humanoid then return end
+                    for _, part in ipairs(partsInBox) do
+                        local model = part:FindFirstAncestorWhichIsA("Model")
+                        if model and table.find(enemyChars, model) then
+                            firetouchinterest(touchPart, part, 1)
+                            firetouchinterest(touchPart, part, 0)
+                        end
+                    end
+                end
+            end
+        end
 
-	local Tools = {}
-	local Characters = GetEnemyCharacters(char)
-	IgnoreList.FilterDescendantsInstances = Characters
+        RunService.Heartbeat:Wait(attackRate)
+    end
+end)
 
-	for _, tool in ipairs(char:GetChildren()) do
-		if tool:IsA("Tool") and GetTouchPart(tool) then
-			table.insert(Tools, tool)
-			local TouchPart = GetTouchPart(tool)
-			ActivateTool(tool)
-			ApplyDamage(Tools, Characters, TouchPart)
-		end
-	end
+-- RESET ON DEATH
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(1)
+    running = true
 end)

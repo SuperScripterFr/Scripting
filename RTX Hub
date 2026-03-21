@@ -738,7 +738,7 @@ local tools = {
     {"Use Tools", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Use%20Tools"},
     {"NoAnimTools", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/No%20Anim%20Tools"},
     {"Normla Kill Aura", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Kill%20Aura"},
-    {"Insta-Kill-Aura", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Insta-Kill/raw"},
+    {"Insta-Kill-Aura", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Insta-Kill"},
 	{"Loop Tools", "https://pastefy.app/ke1I4ZRo/raw"},
     {"Grip V2", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Grip"},
     {"Float", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Float%20Tools"},

@@ -1,210 +1,136 @@
---=========================================
--- SERVICES
---=========================================
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
-local UserInputService = game:GetService("UserInputService")
-local player = Players.LocalPlayer
-
---=========================================
--- GUI
---=========================================
+-- Create GUI elements
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "UseToolsGUI"
-screenGui.Parent = player:WaitForChild("PlayerGui")
-screenGui.ResetOnSpawn = false
-
-local buttonFrame = Instance.new("Frame")
-buttonFrame.Name = "ButtonFrame"
-buttonFrame.Size = UDim2.new(0, 120, 0, 50) -- Bigger
-buttonFrame.Position = UDim2.new(0.8, 0, 0.7, 0) -- More to the right
-buttonFrame.BackgroundColor3 = Color3.fromRGB(15,15,15)
-buttonFrame.BorderSizePixel = 0
-buttonFrame.Parent = screenGui
-
-local frameStroke = Instance.new("UIStroke")
-frameStroke.Parent = buttonFrame
-frameStroke.Color = Color3.fromRGB(0, 150, 255) -- Blue
-frameStroke.Thickness = 3
-
-local frameCorner = Instance.new("UICorner")
-frameCorner.CornerRadius = UDim.new(0,12)
-frameCorner.Parent = buttonFrame
-
 local toolButton = Instance.new("TextButton")
-toolButton.Name = "UseToolsButton"
-toolButton.Size = UDim2.new(1, -10, 1, -10)
-toolButton.Position = UDim2.new(0,5,0,5)
-toolButton.BackgroundColor3 = Color3.fromRGB(25,25,25)
-toolButton.TextColor3 = Color3.fromRGB(0, 200, 255) -- Blue text
-toolButton.Font = Enum.Font.GothamBold
-toolButton.TextScaled = true
-toolButton.TextWrapped = true
-toolButton.Text = "Use-Tools"
-toolButton.Parent = buttonFrame
+local uicorner = Instance.new("UICorner")
+local uiStroke = Instance.new("UIStroke")
+local uiGradient = Instance.new("UIGradient")
 
-local buttonStroke = Instance.new("UIStroke")
-buttonStroke.Parent = toolButton
-buttonStroke.Color = Color3.fromRGB(0, 150, 255)
-buttonStroke.Thickness = 2
+-- Set parent for ScreenGui
+screenGui.Name = "CosmicToolGui"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = game.CoreGui
 
-local buttonCorner = Instance.new("UICorner")
-buttonCorner.CornerRadius = UDim.new(0,12)
-buttonCorner.Parent = toolButton
+-- Configure toolButton
+toolButton.Name = "AttackToggle"
+toolButton.Parent = screenGui
+toolButton.Position = UDim2.new(1, -170, 0, 100)
+toolButton.BackgroundColor3 = Color3.fromRGB(10, 10, 25) -- Cosmic deep purple/blue
+toolButton.Size = UDim2.new(0, 120, 0, 60)
+toolButton.Font = Enum.Font.GothamBlack
+toolButton.Text = "OFF"
+toolButton.TextColor3 = Color3.fromRGB(100, 200, 255) -- Neon blue
+toolButton.TextStrokeTransparency = 0.5 -- Slight glow
+toolButton.TextSize = 20
+toolButton.Draggable = false
+toolButton.AutoButtonColor = false
 
---=========================================
--- VARIABLES
---=========================================
-local isActive = false
-local noclipConnection = nil
+-- Add rounded corners
+uicorner.CornerRadius = UDim.new(0.2, 0)
+uicorner.Parent = toolButton
 
---=========================================
--- FUNCTIONS
---=========================================
-local function toggleNoclip(enabled)
-    if noclipConnection then
-        noclipConnection:Disconnect()
-        noclipConnection = nil
-    end
-    if enabled then
-        noclipConnection = RunService.Stepped:Connect(function()
-            if player.Character then
-                for _, part in ipairs(player.Character:GetDescendants()) do
-                    if part:IsA("BasePart") then
-                        part.CanCollide = false
-                    end
-                end
-            end
-        end)
-    end
-end
+-- Add outer glow
+uiStroke.Thickness = 2
+uiStroke.Color = Color3.fromRGB(80, 120, 255) -- Light blue glow
+uiStroke.Transparency = 0.2
+uiStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+uiStroke.Parent = toolButton
 
-local function animateButton(on)
-    local goal = {BackgroundColor3 = on and Color3.fromRGB(35,35,35) or Color3.fromRGB(25,25,25)}
-    TweenService:Create(toolButton, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), goal):Play()
-end
+-- Add starry gradient
+uiGradient.Color = ColorSequence.new{
+	ColorSequenceKeypoint.new(0.0, Color3.fromRGB(20, 20, 40)),
+	ColorSequenceKeypoint.new(0.5, Color3.fromRGB(30, 30, 70)),
+	ColorSequenceKeypoint.new(1.0, Color3.fromRGB(10, 10, 25))
+}
+uiGradient.Rotation = 45
+uiGradient.Parent = toolButton
 
-local function toggleButton()
-    isActive = not isActive
-    if isActive then
-        toolButton.Text = "On"
-        toggleNoclip(true)
-        animateButton(true)
-    else
-        toolButton.Text = "Off"
-        toggleNoclip(false)
-        if player.Character then
-            for _, tool in ipairs(player.Character:GetChildren()) do
-                if tool:IsA("Tool") then
-                    tool.Parent = player.Backpack
-                end
-            end
-        end
-        animateButton(false)
-    end
-end
+-- Initialize state variables
+local attackEnabled = false
+local player = game.Players.LocalPlayer
+local attackingTools = {}
 
-toolButton.MouseButton1Click:Connect(toggleButton)
-toolButton.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.Touch then
-        toggleButton()
-    end
-end)
+-- Store original wait() function
+local originalWait = wait
 
---=========================================
--- ⚡ USE TOOLS V10 (LIVE SCAN ENGINE)
---=========================================
-
-local RATE = 6 -- activations per tick
-
-if _G.UltraTick then
-
-	_G.UltraTick.Bind(function()
-
-		if not isActive then return end
-
-		local char = player.Character
-		if not char then return end
-
-		local backpack = player:FindFirstChild("Backpack")
-
-		-- force equip real tools only
-		if backpack then
-			for _,tool in ipairs(backpack:GetChildren()) do
-				if tool:IsA("Tool") then
-					tool.Parent = char
-				end
-			end
-		end
-
-		-- activate equipped tools
-		for _,tool in ipairs(char:GetChildren()) do
-			if tool:IsA("Tool") then
-
-				for i = 1,RATE do
-					pcall(tool.Activate, tool)
-				end
-
-				-- ⭐ hybrid remote boost (optional)
-				local remote = tool:FindFirstChild("FightEvent")
-				if remote then
-					remote:FireServer()
-				end
-
-			end
-		end
-
+-- Function to enable no cooldown
+local function enableNoCooldown()
+	if not _G.originalWait then
+		_G.originalWait = wait
+	end
+	global_wait = hookfunction(wait, function()
+		return task.wait(0)
 	end)
-
 end
 
---=========================================
--- DRAGGABLE LIMIT
---=========================================
-local dragging = false
-local dragInput, mousePos, framePos
+-- Function to disable no cooldown
+local function disableNoCooldown()
+	if _G.originalWait then
+		global_wait = hookfunction(wait, _G.originalWait)
+	end
+end
 
-toolButton.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        mousePos = input.Position
-        framePos = buttonFrame.Position
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
-    end
+-- Function to toggle attack mode
+local function toggleAttack()
+	attackEnabled = not attackEnabled
+	toolButton.Text = attackEnabled and "ON" or "OFF"
+	toolButton.TextColor3 = attackEnabled and Color3.fromRGB(255, 80, 150) or Color3.fromRGB(100, 200, 255) -- Changes color to hot pink if ON
+
+	if attackEnabled then
+		enableNoCooldown()
+	else
+		disableNoCooldown()
+		if player and player.Character then
+			for _, tool in ipairs(player.Character:GetChildren()) do
+				if tool:IsA("Tool") then
+					tool.Parent = player.Backpack
+				end
+			end
+		end
+		attackingTools = {}
+	end
+end
+
+-- Connect button click to toggle function
+toolButton.MouseButton1Click:Connect(toggleAttack)
+
+-- Function to equip and auto-activate tools
+local function activateAllTools()
+	if not attackEnabled then return end
+
+	for _, tool in ipairs(player.Backpack:GetChildren()) do
+		if tool:IsA("Tool") then
+			if tool.Parent ~= player.Character then
+				tool.Parent = player.Character
+			end
+			if not attackingTools[tool] then
+				attackingTools[tool] = true
+				task.spawn(function()
+					while attackEnabled and tool.Parent == player.Character do
+						pcall(function()
+							tool:Activate()
+						end)
+						task.wait(0)
+					end
+					attackingTools[tool] = nil
+				end)
+			end
+		end
+	end
+end
+
+-- Auto-activate on RenderStepped
+game:GetService("RunService").RenderStepped:Connect(function()
+	if attackEnabled then
+		activateAllTools()
+	end
 end)
 
-toolButton.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-        dragInput = input
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if dragging and input == dragInput then
-        local delta = input.Position - mousePos
-        local newX = math.clamp(framePos.X.Offset + delta.X, 0, workspace.CurrentCamera.ViewportSize.X - buttonFrame.AbsoluteSize.X)
-        local newY = math.clamp(framePos.Y.Offset + delta.Y, 0, workspace.CurrentCamera.ViewportSize.Y - buttonFrame.AbsoluteSize.Y)
-        buttonFrame.Position = UDim2.new(framePos.X.Scale, newX, framePos.Y.Scale, newY)
-    end
-end)
-
---=========================================
--- KEYBIND TOGGLE
---=========================================
-local TOGGLE_KEY = Enum.KeyCode.E -- Change this to whatever you want
-local keyDebounce = false
-
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if input.KeyCode == TOGGLE_KEY and not keyDebounce then
-        keyDebounce = true
-        toggleButton()
-        task.wait(0.15) -- prevents spam from holding key
-        keyDebounce = false
-    end
+-- Failsafe: Auto-requip unequipped tool
+player.Character.ChildRemoved:Connect(function(tool)
+	if attackEnabled and tool:IsA("Tool") then
+		task.wait(0)
+		if tool.Parent == player.Backpack then
+			tool.Parent = player.Character
+		end
+	end
 end)

@@ -1,240 +1,148 @@
--- ⚡ ULTRA-INSTANT TOOL GRABBER — FILTERED + PING-PROOF + INSTANT RESPAWN BLAST ⚡
-local Players       = game:GetService("Players")
-local RunService    = game:GetService("RunService")
-local LocalPlayer   = Players.LocalPlayer
-local Tycoons       = workspace:WaitForChild("Tycoons")
+-- ⚡ SMART BURST TOOL GRABBER (ULTRA OPTIMIZED)
 
--- === CONFIG (tune these if desired) ===
-local RESPAWN_BLAST_TIME    = 2.5     -- how long to hyper-spam on respawn (seconds)
-local RESPAWN_BURSTS        = 12      -- how many sub-bursts per pad during respawn
-local RESPAWN_TOUCHES       = 8       -- firetouchinterest count per sub-burst
-local BACKGROUND_BURSTS     = 2       -- light bursts when not in respawn blast (keeps pads warm)
-local BACKGROUND_TOUCHES    = 2
-local PAD_TOUCH_RANGE       = math.huge -- only simulate touch if pad is within this many studs of your HRP
-local HRP_WAIT_TIMEOUT      = 3       -- how long to wait for HRP on respawn
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 
--- SELECT WHICH BASES YOU WANT
-local allowedBases  = { "Stone", "Magic", "Storm" }
-local excludedBases = { "Insanity", "Giant", "Dark", "Spike", "Web", "Strong" }
+local player = Players.LocalPlayer
+local Tycoons = workspace:WaitForChild("Tycoons")
 
--- ONLY these tool names count as "successfully grabbed"
+-- CONFIG
+local RESPAWN_TIME = 0
+local TOUCHES_PER_PAD = 6
+local BACKGROUND_TOUCHES = 2
+local PAD_RANGE = 1000
+local CYCLE_DELAY = 0
+
+local allowedBases = {Stone=true, Magic=true, Storm=true, Robotic=true}
+local excludedBases = {Insanity=true, Giant=true, Dark=true, Spike=true, Web=true, Strong=true}
+
 local requiredTools = {
-    ["Energy Sword"] = true,
-    ["Fist"] = true,
-    ["Staff"] = true,
-    ["Axe"] = true,
+	["Energy Sword"]=true,
+	["Fist"]=true,
+	["Staff"]=true,
+	["Axe"]=true,
 }
 
--- === INTERNALS ===
-local allowedSet, excludedSet = {}, {}
-for _, b in ipairs(allowedBases) do allowedSet[b] = true end
-for _, b in ipairs(excludedBases) do excludedSet[b] = true end
-
--- pads stored in an array for fastest iteration
+-- internals
 local pads = {}
-local padCount = 0
+local padIndex = 1
+local grabbing = false
 
-local root = nil
-local inRespawnBlast = false
+-- register pads
+local function register(pad)
+	local base = pad.Parent and pad.Parent.Parent
+	if not base then return end
+	if excludedBases[base.Name] then return end
+	if not allowedBases[base.Name] then return end
 
--- === UTIL: Check for required tools (Backpack + Character)
-local function hasRequiredTools()
-    local found = {}
-    local function scanContainer(container)
-        if not container then return end
-        for _, child in ipairs(container:GetChildren()) do
-            if child:IsA("Tool") and requiredTools[child.Name] then
-                found[child.Name] = true
-            end
-        end
-    end
+	for _,p in ipairs(pads) do
+		if p == pad then return end
+	end
 
-    scanContainer(LocalPlayer.Backpack)
-    scanContainer(LocalPlayer.Character)
-
-    -- ensure all requiredTools keys are present
-    for name, _ in pairs(requiredTools) do
-        if not found[name] then
-            return false
-        end
-    end
-    return true
+	table.insert(pads,pad)
 end
 
--- === UTIL: any tool at all (fallback)
-local function hasAnyTool()
-    local bp = LocalPlayer.Backpack
-    if not bp then return false end
-    if #bp:GetChildren() > 0 then return true end
-    if LocalPlayer.Character then
-        for _, ch in ipairs(LocalPlayer.Character:GetChildren()) do
-            if ch:IsA("Tool") then return true end
-        end
-    end
-    return false
-end
-
--- === FAST firetouch wrapper (pcall safe)
-local function touchPair(rootPart, padPart)
-    if not rootPart or not padPart then return end
-    pcall(firetouchinterest, rootPart, padPart, 0)
-    pcall(firetouchinterest, rootPart, padPart, 1)
-end
-
--- === CORE: fire pad bursts (synchronous, avoids task.defer)
-local function firePadBurst(rootPart, padPart, bursts, touchesPerBurst)
-    if not rootPart or not padPart then return end
-    for b = 1, bursts do
-        for t = 1, touchesPerBurst do
-            touchPair(rootPart, padPart)
-        end
-    end
-end
-
--- === PAD REGISTRATION: keep the original allowed/excluded base logic
-local function registerPad(pad)
-    if not pad or not pad.Parent then return end
-    local baseModel = pad.Parent.Parent
-    if not baseModel then return end
-
-    local name = baseModel.Name
-    if excludedSet[name] then return end
-    if allowedSet[name] or not excludedSet[name] then
-        -- ensure we don't duplicate
-        for i = 1, padCount do
-            if pads[i] == pad then return end
-        end
-        padCount += 1
-        pads[padCount] = pad
-    end
-end
-
--- initial scan (mirrors your original)
-for _, d in ipairs(Tycoons:GetDescendants()) do
-    if d:IsA("TouchTransmitter") and d.Parent and d.Parent.Parent and d.Parent.Parent.Name:find("GearGiver1") then
-        registerPad(d.Parent)
-    end
+for _,d in ipairs(Tycoons:GetDescendants()) do
+	if d:IsA("TouchTransmitter") and d.Parent and d.Parent.Parent and d.Parent.Parent.Name:find("GearGiver1") then
+		register(d.Parent)
+	end
 end
 
 Tycoons.DescendantAdded:Connect(function(d)
-    if d:IsA("TouchTransmitter") and d.Parent and d.Parent.Parent and d.Parent.Parent.Name:find("GearGiver1") then
-        registerPad(d.Parent)
-    end
+	if d:IsA("TouchTransmitter") and d.Parent and d.Parent.Parent and d.Parent.Parent.Name:find("GearGiver1") then
+		register(d.Parent)
+	end
 end)
 
--- === HELPERS: get HRP quickly
-local function getRoot()
-    local c = LocalPlayer.Character
-    return c and c:FindFirstChild("HumanoidRootPart")
+-- tool check
+local function haveTools()
+	local found = {}
+
+	local function scan(c)
+		if not c then return end
+		for _,t in ipairs(c:GetChildren()) do
+			if t:IsA("Tool") and requiredTools[t.Name] then
+				found[t.Name]=true
+			end
+		end
+	end
+
+	scan(player.Backpack)
+	scan(player.Character)
+
+	for name in pairs(requiredTools) do
+		if not found[name] then
+			return false
+		end
+	end
+
+	return true
 end
 
--- === RESPAWN BLAST: hyper-spam immediately after respawn
-local function onRespawnBlast()
-    inRespawnBlast = true
-    root = nil
-
-    local char = LocalPlayer.Character
-
-    --------------------------------------------------------------------
-    -- INSTANT HRP REPLACEMENT
-    -- Create a fake HRP immediately so tool-grabbing starts instantly
-    --------------------------------------------------------------------
-    local fakeRoot = Instance.new("Part")
-    fakeRoot.Name = "FakeHRP"
-    fakeRoot.Size = Vector3.new(2,2,1)
-    fakeRoot.Transparency = 1
-    fakeRoot.CanCollide = false
-    fakeRoot.Anchored = true
-    fakeRoot.Parent = workspace
-
-    -- place fake HRP at predicted spawn location (keeps consistency)
-    if char and char:FindFirstChild("Humanoid") then
-        fakeRoot.CFrame = CFrame.new(char.Humanoid.RootPart and char.Humanoid.RootPart.Position or Vector3.new(0,5,0))
-    end
-
-    root = fakeRoot   -- USE FAKE ROOT IMMEDIATELY
-
-    --------------------------------------------------------------------
-    -- Wait for real HRP with high-priority tapping
-    --------------------------------------------------------------------
-    local realRoot = nil
-
-    if char then
-        local c
-        c = char.ChildAdded:Connect(function(child)
-            if child.Name == "HumanoidRootPart" then
-                realRoot = child
-                c:Disconnect()
-            end
-        end)
-
-        -- fallback scan
-        local t0 = os.clock()
-        repeat
-            realRoot = char:FindFirstChild("HumanoidRootPart")
-            task.wait()
-        until realRoot or os.clock() - t0 > HRP_WAIT_TIMEOUT
-    end
-
-    --------------------------------------------------------------------
-    -- Swap to REAL HRP instantly once it exists
-    --------------------------------------------------------------------
-    if realRoot then
-        root = realRoot
-        fakeRoot:Destroy()
-    end
-
-    --------------------------------------------------------------------
-    -- Continue with your normal blast
-    --------------------------------------------------------------------
-    local t0 = os.clock()
-
-    while os.clock() - t0 < RESPAWN_BLAST_TIME do
-        if not root then break end
-
-        for i = 1, padCount do
-            local padPart = pads[i]
-            if padPart and padPart:IsA("BasePart") then
-                firePadBurst(root, padPart, RESPAWN_BURSTS, RESPAWN_TOUCHES)
-            end
-        end
-
-        if hasRequiredTools() then break end
-
-        task.wait(0.01)
-    end
-
-    inRespawnBlast = false
-
-    -- ensure fake root is gone
-    if fakeRoot and fakeRoot.Parent then fakeRoot:Destroy() end
+-- touch
+local function tap(root,pad)
+	pcall(firetouchinterest,root,pad,0)
+	pcall(firetouchinterest,root,pad,1)
 end
 
--- === CHARACTER ADDED connect
-LocalPlayer.CharacterAdded:Connect(function()
-    -- start the aggressive blast just after spawn
-    task.spawn(onRespawnBlast)
+-- respawn grab burst
+local function respawnGrab()
+
+	grabbing = true
+
+	local char = player.Character
+	if not char then grabbing=false return end
+
+	local root = char:WaitForChild("HumanoidRootPart",2)
+	if not root then grabbing=false return end
+
+	local t0 = os.clock()
+
+	while os.clock()-t0 < RESPAWN_TIME do
+
+		if haveTools() then break end
+
+		local pad = pads[padIndex]
+		padIndex += 1
+		if padIndex > #pads then padIndex = 1 end
+
+		if pad and (pad.Position-root.Position).Magnitude < PAD_RANGE then
+			for i=1,TOUCHES_PER_PAD do
+				tap(root,pad)
+			end
+		end
+
+		task.wait(CYCLE_DELAY)
+
+	end
+
+	grabbing = false
+
+end
+
+player.CharacterAdded:Connect(function()
+	task.spawn(respawnGrab)
 end)
 
--- === LIGHT BACKGROUND LOOP (keeps pads warm, but avoids touching far-away things)
+-- background warming
 RunService.Heartbeat:Connect(function()
-    -- keep root updated
-    root = root or getRoot()
-    if not root then return end
 
-    -- if currently in respawn blast, skip background
-    if inRespawnBlast then return end
+	if grabbing then return end
 
-    -- light bursts per frame, only for pads near you
-    for i = 1, padCount do
-        local padPart = pads[i]
-        if padPart and padPart:IsA("BasePart") then
-            local ok, pos = pcall(function() return padPart.Position end)
-            if ok and pos and (pos - root.Position).Magnitude <= PAD_TOUCH_RANGE then
-                firePadBurst(root, padPart, BACKGROUND_BURSTS, BACKGROUND_TOUCHES)
-            end
-        end
-    end
+	local char = player.Character
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	if not root then return end
+
+	local pad = pads[padIndex]
+	padIndex += 1
+	if padIndex > #pads then padIndex = 1 end
+
+	if pad and (pad.Position-root.Position).Magnitude < PAD_RANGE then
+		for i=1,BACKGROUND_TOUCHES do
+			tap(root,pad)
+		end
+	end
+
 end)
 
-print("⚡ ULTRA-INSTANT TOOL GRABBER (filtered + instant-respawn) initialized.")
+print("⚡ Smart Burst Tool Grabber Loaded")

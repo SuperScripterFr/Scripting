@@ -113,76 +113,51 @@ toolButton.InputBegan:Connect(function(input)
 end)
 
 --=========================================
--- ⚡ ULTRA POWER TOOL ENGINE (V9)
+-- ⚡ USE TOOLS V10 (LIVE SCAN ENGINE)
 --=========================================
 
-local TOOL_BURST = 4          -- attacks per frame (increase for more power)
-local TOOL_SCAN_RATE = 0.25   -- how often to rescan tools
+local RATE = 6 -- activations per tick
 
-local cachedTools = {}
-local lastToolScan = 0
+if _G.UltraTick then
 
-local function updateToolCache()
+	_G.UltraTick.Bind(function()
 
-	table.clear(cachedTools)
+		if not isActive then return end
 
-	local char = player.Character
-	local backpack = player:FindFirstChild("Backpack")
+		local char = player.Character
+		if not char then return end
 
-	if backpack then
-		for _,tool in ipairs(backpack:GetChildren()) do
-			if tool:IsA("Tool") then
-				table.insert(cachedTools, tool)
+		local backpack = player:FindFirstChild("Backpack")
+
+		-- force equip real tools only
+		if backpack then
+			for _,tool in ipairs(backpack:GetChildren()) do
+				if tool:IsA("Tool") then
+					tool.Parent = char
+				end
 			end
 		end
-	end
 
-	if char then
+		-- activate equipped tools
 		for _,tool in ipairs(char:GetChildren()) do
 			if tool:IsA("Tool") then
-				table.insert(cachedTools, tool)
+
+				for i = 1,RATE do
+					pcall(tool.Activate, tool)
+				end
+
+				-- ⭐ hybrid remote boost (optional)
+				local remote = tool:FindFirstChild("FightEvent")
+				if remote then
+					remote:FireServer()
+				end
+
 			end
 		end
-	end
+
+	end)
 
 end
-
-RunService.Heartbeat:Connect(function()
-
-	if not isActive then return end
-
-	local char = player.Character
-	if not char then return end
-
-	-- rescan tools occasionally
-	if tick() - lastToolScan > TOOL_SCAN_RATE then
-		lastToolScan = tick()
-		updateToolCache()
-	end
-
-	-- force equip all cached tools
-	for i = 1, #cachedTools do
-		local tool = cachedTools[i]
-		if tool.Parent ~= char then
-			tool.Parent = char
-		end
-	end
-
-	-- BURST ACTIVATE
-	for burst = 1, TOOL_BURST do
-
-		for i = 1, #cachedTools do
-			local tool = cachedTools[i]
-
-			if tool.Parent == char then
-				pcall(tool.Activate, tool)
-			end
-
-		end
-
-	end
-
-end)
 
 --=========================================
 -- DRAGGABLE LIMIT

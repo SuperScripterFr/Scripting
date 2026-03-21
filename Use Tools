@@ -1,136 +1,134 @@
--- Create GUI elements
-local screenGui = Instance.new("ScreenGui")
-local toolButton = Instance.new("TextButton")
-local uicorner = Instance.new("UICorner")
-local uiStroke = Instance.new("UIStroke")
-local uiGradient = Instance.new("UIGradient")
+-- ⚡ QUANTUM MULTITOOL ENGINE
 
--- Set parent for ScreenGui
-screenGui.Name = "CosmicToolGui"
-screenGui.ResetOnSpawn = false
-screenGui.Parent = game.CoreGui
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 
--- Configure toolButton
-toolButton.Name = "AttackToggle"
-toolButton.Parent = screenGui
-toolButton.Position = UDim2.new(1, -170, 0, 100)
-toolButton.BackgroundColor3 = Color3.fromRGB(10, 10, 25) -- Cosmic deep purple/blue
-toolButton.Size = UDim2.new(0, 120, 0, 60)
-toolButton.Font = Enum.Font.GothamBlack
-toolButton.Text = "OFF"
-toolButton.TextColor3 = Color3.fromRGB(100, 200, 255) -- Neon blue
-toolButton.TextStrokeTransparency = 0.5 -- Slight glow
-toolButton.TextSize = 20
-toolButton.Draggable = false
-toolButton.AutoButtonColor = false
+local player = Players.LocalPlayer
 
--- Add rounded corners
-uicorner.CornerRadius = UDim.new(0.2, 0)
-uicorner.Parent = toolButton
+-- CONFIG
+local ACTIVATIONS_PER_SECOND = 35
+local EQUIP_REFRESH = 0.12
+local BURST_PER_PULSE = 1
 
--- Add outer glow
-uiStroke.Thickness = 2
-uiStroke.Color = Color3.fromRGB(80, 120, 255) -- Light blue glow
-uiStroke.Transparency = 0.2
-uiStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-uiStroke.Parent = toolButton
+-- STATE
+local active = false
+local pulseAccum = 0
+local equipAccum = 0
+local pulseInterval = 1 / ACTIVATIONS_PER_SECOND
 
--- Add starry gradient
-uiGradient.Color = ColorSequence.new{
-	ColorSequenceKeypoint.new(0.0, Color3.fromRGB(20, 20, 40)),
-	ColorSequenceKeypoint.new(0.5, Color3.fromRGB(30, 30, 70)),
-	ColorSequenceKeypoint.new(1.0, Color3.fromRGB(10, 10, 25))
-}
-uiGradient.Rotation = 45
-uiGradient.Parent = toolButton
+--==================================================
+-- TOOL CONTROL
+--==================================================
 
--- Initialize state variables
-local attackEnabled = false
-local player = game.Players.LocalPlayer
-local attackingTools = {}
+local function equipAll()
+	local char = player.Character
+	local bp = player.Backpack
+	if not char or not bp then return end
 
--- Store original wait() function
-local originalWait = wait
-
--- Function to enable no cooldown
-local function enableNoCooldown()
-	if not _G.originalWait then
-		_G.originalWait = wait
-	end
-	global_wait = hookfunction(wait, function()
-		return task.wait(0)
-	end)
-end
-
--- Function to disable no cooldown
-local function disableNoCooldown()
-	if _G.originalWait then
-		global_wait = hookfunction(wait, _G.originalWait)
+	for _,t in ipairs(bp:GetChildren()) do
+		if t:IsA("Tool") then
+			t.Parent = char
+		end
 	end
 end
 
--- Function to toggle attack mode
-local function toggleAttack()
-	attackEnabled = not attackEnabled
-	toolButton.Text = attackEnabled and "ON" or "OFF"
-	toolButton.TextColor3 = attackEnabled and Color3.fromRGB(255, 80, 150) or Color3.fromRGB(100, 200, 255) -- Changes color to hot pink if ON
+local function unequipAll()
+	local char = player.Character
+	local bp = player.Backpack
+	if not char or not bp then return end
 
-	if attackEnabled then
-		enableNoCooldown()
+	for _,t in ipairs(char:GetChildren()) do
+		if t:IsA("Tool") then
+			t.Parent = bp
+		end
+	end
+end
+
+local function pulseActivate()
+	local char = player.Character
+	if not char then return end
+
+	for _,t in ipairs(char:GetChildren()) do
+		if t:IsA("Tool") then
+			for i=1,BURST_PER_PULSE do
+				pcall(t.Activate,t)
+			end
+		end
+	end
+end
+
+--==================================================
+-- ENGINE
+--==================================================
+
+RunService.Heartbeat:Connect(function(dt)
+
+	if not active then return end
+
+	equipAccum += dt
+	if equipAccum >= EQUIP_REFRESH then
+		equipAccum = 0
+		equipAll()
+	end
+
+	pulseAccum += dt
+	while pulseAccum >= pulseInterval do
+		pulseAccum -= pulseInterval
+		pulseActivate()
+	end
+
+end)
+
+--==================================================
+-- UI
+--==================================================
+
+local gui = Instance.new("ScreenGui",game.CoreGui)
+gui.ResetOnSpawn = false
+
+local btn = Instance.new("TextButton",gui)
+btn.Size = UDim2.fromOffset(120,42)
+btn.Position = UDim2.new(1,-140,1,-80)
+btn.BackgroundColor3 = Color3.fromRGB(20,20,35)
+btn.TextColor3 = Color3.fromRGB(0,255,255)
+btn.Text = "OVERDRIVE"
+btn.Font = Enum.Font.GothamBold
+btn.TextScaled = true
+btn.Active = true
+btn.Draggable = true
+
+Instance.new("UICorner",btn).CornerRadius = UDim.new(0,10)
+local stroke = Instance.new("UIStroke",btn)
+stroke.Color = Color3.fromRGB(0,255,255)
+
+local function setState(s)
+	active = s
+	btn.Text = active and "ACTIVE" or "OVERDRIVE"
+
+	if active then
+		equipAll()
 	else
-		disableNoCooldown()
-		if player and player.Character then
-			for _, tool in ipairs(player.Character:GetChildren()) do
-				if tool:IsA("Tool") then
-					tool.Parent = player.Backpack
-				end
-			end
-		end
-		attackingTools = {}
+		unequipAll()
 	end
 end
 
--- Connect button click to toggle function
-toolButton.MouseButton1Click:Connect(toggleAttack)
+btn.MouseButton1Click:Connect(function()
+	setState(not active)
+end)
 
--- Function to equip and auto-activate tools
-local function activateAllTools()
-	if not attackEnabled then return end
-
-	for _, tool in ipairs(player.Backpack:GetChildren()) do
-		if tool:IsA("Tool") then
-			if tool.Parent ~= player.Character then
-				tool.Parent = player.Character
-			end
-			if not attackingTools[tool] then
-				attackingTools[tool] = true
-				task.spawn(function()
-					while attackEnabled and tool.Parent == player.Character do
-						pcall(function()
-							tool:Activate()
-						end)
-						task.wait(0)
-					end
-					attackingTools[tool] = nil
-				end)
-			end
-		end
-	end
-end
-
--- Auto-activate on RenderStepped
-game:GetService("RunService").RenderStepped:Connect(function()
-	if attackEnabled then
-		activateAllTools()
+UIS.InputBegan:Connect(function(i,g)
+	if not g and i.KeyCode == Enum.KeyCode.E then
+		setState(not active)
 	end
 end)
 
--- Failsafe: Auto-requip unequipped tool
-player.Character.ChildRemoved:Connect(function(tool)
-	if attackEnabled and tool:IsA("Tool") then
-		task.wait(0)
-		if tool.Parent == player.Backpack then
-			tool.Parent = player.Character
-		end
+player.CharacterAdded:Connect(function()
+	task.wait(.1)
+	if active then
+		equipAll()
 	end
 end)
+
+print("⚡ Quantum MultiTool Ready")

@@ -584,7 +584,7 @@ welcomeText.TextXAlignment = Enum.TextXAlignment.Left
 welcomeText.Font = Enum.Font.Gotham
 welcomeText.TextSize = 14
 welcomeText.TextColor3 = Settings.Theme and Settings.Theme.Muted or DEFAULT_THEME.Muted
-welcomeText.Text = "Welcome to the 01_ii SPT Hub, built from scratch, cleanest hub yet, most overpowered ever!! To begin using the hub, start with getting a base with the button below!"
+welcomeText.Text = "Welcome to the SPT Hub, built from scratch, cleanest hub yet, most overpowered ever!!!"
 welcomeText.Parent = pageWelcome
 
 local Welcome = {
@@ -598,128 +598,6 @@ for i, t in ipairs(Welcome) do
     row.LayoutOrder = 10 + i
     row.Parent = pageWelcome
 end
-
--- Updates page
-local updatesPage = createPage("Updates")
-local updatesHeader = Instance.new("TextLabel")
-updatesHeader.Size = UDim2.new(1, -24, 0, 26)
-updatesHeader.BackgroundTransparency = 1
-updatesHeader.Font = Enum.Font.GothamBold
-updatesHeader.TextSize = 16
-updatesHeader.TextColor3 = Settings.Theme and Settings.Theme.Text or DEFAULT_THEME.Text
-updatesHeader.TextXAlignment = Enum.TextXAlignment.Left
-updatesHeader.Text = "Updates"
-updatesHeader.Parent = updatesPage
-
-local updatesScroll = Instance.new("ScrollingFrame")
-updatesScroll.Size = UDim2.new(1, -12, 1, -36)
-updatesScroll.Position = UDim2.new(0, 6, 0, 30)
-updatesScroll.BackgroundTransparency = 1
-updatesScroll.BorderSizePixel = 0
-updatesScroll.ScrollBarThickness = 6
-updatesScroll.CanvasSize = UDim2.new(0,0,0,0)
-updatesScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-updatesScroll.Parent = updatesPage
-
-local updatesLabel = Instance.new("TextLabel")
-updatesLabel.Size = UDim2.new(1, -10, 0, 0)
-updatesLabel.Position = UDim2.new(0, 5, 0, 0)
-updatesLabel.BackgroundTransparency = 1
-updatesLabel.Text = [[
-📝 Updates:
-
-1/3/26
-    - Reworked ALL scripts. Improved Perfromace, and Effeciency. Also reworked UIs
-        - Updated scripts can only be found in the testing page, in which only certain people can access.
-
-    - Brought back the OLD Hub Design from a few months ago. This ones just better fr.
-
-]]
-updatesLabel.TextColor3 = Settings.Theme and Settings.Theme.Text or DEFAULT_THEME.Text
-updatesLabel.TextWrapped = true
-updatesLabel.TextYAlignment = Enum.TextYAlignment.Top
-updatesLabel.TextXAlignment = Enum.TextXAlignment.Center
-updatesLabel.Font = Enum.Font.Gotham
-updatesLabel.TextSize = 14
-updatesLabel.AutomaticSize = Enum.AutomaticSize.Y
-updatesLabel.Parent = updatesScroll
-
-updatesLabel:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
-    updatesScroll.CanvasSize = UDim2.new(0, 0, 0, updatesLabel.AbsoluteSize.Y + 20)
-end)
-updatesScroll.CanvasSize = UDim2.new(0, 0, 0, updatesLabel.AbsoluteSize.Y + 20)
-
--- Info page
-local infoPage = createPage("Info")
-local infoHeader = Instance.new("TextLabel")
-infoHeader.Size = UDim2.new(1, -24, 0, 26)
-infoHeader.BackgroundTransparency = 1
-infoHeader.Font = Enum.Font.GothamBold
-infoHeader.TextSize = 16
-infoHeader.TextColor3 = Settings.Theme and Settings.Theme.Text or DEFAULT_THEME.Text
-infoHeader.TextXAlignment = Enum.TextXAlignment.Left
-infoHeader.Text = "Hub Info"
-infoHeader.Parent = infoPage
-
-local infoScroll = Instance.new("ScrollingFrame")
-infoScroll.Size = UDim2.new(1, -12, 1, -36)
-infoScroll.Position = UDim2.new(0, 6, 0, 30)
-infoScroll.BackgroundTransparency = 1
-infoScroll.BorderSizePixel = 0
-infoScroll.ScrollBarThickness = 6
-infoScroll.CanvasSize = UDim2.new(0,0,0,0)
-infoScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-infoScroll.Parent = infoPage
-
-local infoLabel = Instance.new("TextLabel")
-infoLabel.Size = UDim2.new(1, -10, 0, 0)
-infoLabel.Position = UDim2.new(0, 5, 0, 0)
-infoLabel.BackgroundTransparency = 1
-infoLabel.Text = [[
-📝 Hub Information:
-
-How to open and close: 
-    - To Open the hub (You obv already figured that out) you will type /hubopen in the chat, to close the hub, you will type /hubclose in the chat.
-
-Pages and buttons: 
-    - Just click on a page to open the page, and click a button to execute the corresponding script. some pages may be for special verified users only, or the creator only.
-
-Updates: 
-    - The updates page will show every new update added to the hub and/or scripts when something is changed to them, always check the updates page on execute.
-
-Scripts:
-     - Most scripts work together, but theres some things you should keep in mind before executing. DO NOT use Insta-Kill, this will sky rocket your ping. this is still a W.I.P. The attacker track is a W.I.P, this is to track whos attacking you so you can attack back. Loopbring is  little outdates and is a current W.I.P, stay tuned. 
-
-    - All other scripts work fine together, just be sure you know what your doing. The hub creator is not goign to waist his life teaching you hwo to use the hub an dscripts because you dont know how to read.
-
-    - Use Tools Anim makes you have anims when attacking, Use Tools No Anim, means there will be no anim when attacking (No Anim is better for ping contorl)
-        - Use Tools Anim is currently buggy, causes high ping very fast, avoid using for now.
-
-    - Attacker tracker still uses commands to open, use /tracker, and /trackerclose
-
-Credits: 
-    - This hub was created solley by Drew (Previously known as Dyllan) This hub took about 2 days to fully finish. very few people will have access to this version of the hub.
-
-Rules:
-    - Do not give this hub to anyone. it is private proerty and i will end everythign you know and love if it gets into the wrong hands. 
-
-    - Do not show people videos, or screenshots of the Hub unless giving permission by the hub creator, Drew.
-
-    - Do not use this hub to kill randoms and abuse everyone, this is meant to protect SPT from the bad hackers, not help destroy it.
-]]
-infoLabel.TextColor3 = Settings.Theme and Settings.Theme.Text or DEFAULT_THEME.Text
-infoLabel.TextWrapped = true
-infoLabel.TextYAlignment = Enum.TextYAlignment.Top
-infoLabel.TextXAlignment = Enum.TextXAlignment.Center
-infoLabel.Font = Enum.Font.Gotham
-infoLabel.TextSize = 14
-infoLabel.AutomaticSize = Enum.AutomaticSize.Y
-infoLabel.Parent = infoScroll
-
-infoLabel:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
-    infoScroll.CanvasSize = UDim2.new(0, 0, 0, infoLabel.AbsoluteSize.Y + 20)
-end)
-infoScroll.CanvasSize = UDim2.new(0, 0, 0, infoLabel.AbsoluteSize.Y + 20)
 
 -- Tools / Player / Other / Settings pages: preserved
 local toolsPage = createPage("Tool Scripts")
@@ -736,13 +614,11 @@ toolsHeader.Parent = toolsPage
 local tools = {
     {"No Cooldown", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/No%20Cooldown"},
     {"Use Tools", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Use%20Tools"},
-    {"NoAnimTools", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/No%20Anim%20Tools"},
-    {"Normla Kill Aura", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Kill%20Aura"},
-    {"Insta-Kill-Aura", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Insta-Kill"},
-	{"Loop Tools", "https://pastefy.app/ke1I4ZRo/raw"},
-    {"Grip V2", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Grip"},
-    {"Float", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Float%20Tools"},
+    {"Kill Aura", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Kill%20Aura"},
+	{"Loop Tools", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Loop%20Tools"},
+    {"Float/Grip", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Grip"},
 }
+
 for i, t in ipairs(tools) do
     local row = createActionButton(t[1], t[2])
     row.LayoutOrder = 10 + i
@@ -1119,6 +995,6 @@ if not _G.RtxHub_FirstSeen then
 end
 
 -- ======= Finalize and initial print =======
-showPage("Info")
+showPage("Welcome")
 
 print("RTX Hub Initilized")

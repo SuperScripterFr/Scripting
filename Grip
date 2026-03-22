@@ -1,241 +1,182 @@
--- Servicios
-
+-- Service variables
 local Players = game:GetService("Players")
-
 local RunService = game:GetService("RunService")
-
 local player = Players.LocalPlayer
 
--- ParÃ¡metros
+-- Follow / aura range settings
+local auraRange = 15  -- Detection range for tools to follow another player
 
-local auraRange = 25 -- Leve aumento para asegurar detecciÃ³n
-
-local forcePower = 1e7 -- Aumentado para mÃ¡xima efectividad
-
-local character = player.Character or player.CharacterAdded:Wait()
-
--- Verificar si el jugador estÃ¡ muerto
-
+-- Check if the player is dead
 local function IsPlayerDead()
-
-	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")	return humanoid and humanoid.Health <= 0
-
+    local char = player.Character
+    if not char then return false end
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    return humanoid and humanoid.Health <= 0
 end
 
--- Remover cualquier BodyVelocity o BodyPosition
-
-local function CleanPhysics(tool)
-
-	local handle = tool:FindFirstChild("Handle")
-
-	if handle then
-
-		local bv = handle:FindFirstChild("BodyVelocity")
-
-		if bv then bv:Destroy() end
-
-		local bp = handle:FindFirstChild("BodyPosition")
-
-		if bp then bp:Destroy() end
-
-	end
-
+-- Remove gravity from the tools so they float
+local function SetToolGravityToZero()
+    for _, tool in ipairs(player.Character:GetChildren()) do
+        if tool:IsA("Tool") then
+            local handle = tool:FindFirstChild("Handle")
+            if handle then
+                -- Add BodyVelocity to remove gravity
+                local bodyVelocity = handle:FindFirstChildOfClass("BodyVelocity")
+                if not bodyVelocity then
+                    bodyVelocity = Instance.new("BodyVelocity")
+                    bodyVelocity.MaxForce = Vector3.new(400000, 400000, 400000)
+                    bodyVelocity.Velocity = Vector3.new(0, 0, 0)  -- No movement (zero gravity)
+                    bodyVelocity.Parent = handle
+                end
+            end
+        end
+    end
 end
 
--- Aplicar BodyVelocity para dejar las herramientas flotando
-
-local function SetToolGravityZero()
-
-	for _, tool in ipairs(player.Character:GetChildren()) do
-
-		if tool:IsA("Tool") and tool:FindFirstChild("Handle") then
-
-			local handle = tool.Handle
-
-			local bv = handle:FindFirstChild("BodyVelocity") or Instance.new("BodyVelocity")
-
-			bv.MaxForce = Vector3.new(forcePower, forcePower, forcePower)
-
-			bv.Velocity = Vector3.new(0, 0, 0)
-
-			bv.Parent = handle
-
-		end
-
-	end
-
+-- Restore normal gravity (when the player respawns)
+local function RestoreToolGravity()
+    for _, tool in ipairs(player.Character:GetChildren()) do
+        if tool:IsA("Tool") then
+            local handle = tool:FindFirstChild("Handle")
+            if handle then
+                local bodyVelocity = handle:FindFirstChildOfClass("BodyVelocity")
+                if bodyVelocity then
+                    bodyVelocity:Destroy()  -- Re-enable normal physics/gravity
+                end
+            end
+        end
+    end
 end
 
--- Detectar el jugador mÃ¡s cercano
-
+-- Find the closest player within range
 local function GetClosestPlayer()
+    local closestPlayer = nil
+    local closestDistance = auraRange
+    local myChar = player.Character
 
-	local closest, closestDist = nil, auraRange
+    for _, otherPlayer in ipairs(Players:GetPlayers()) do
+        local char = otherPlayer.Character
+        if char and char ~= myChar then
+            local humanoid = char:FindFirstChildOfClass("Humanoid")
+            if humanoid and humanoid.Health > 0 then
+                local distance = (char.HumanoidRootPart.Position - myChar.HumanoidRootPart.Position).Magnitude
+                if distance < closestDistance then
+                    closestDistance = distance
+                    closestPlayer = char
+                end
+            end
+        end
+    end
 
-	local myHRP = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-
-	if not myHRP then return nil end
-
-	for _, other in ipairs(Players:GetPlayers()) do
-
-		if other ~= player and other.Character and other.Character:FindFirstChild("HumanoidRootPart") then
-
-			local humanoid = other.Character:FindFirstChildOfClass("Humanoid")
-
-			if humanoid and humanoid.Health > 0 then
-
-				local dist = (other.Character.HumanoidRootPart.Position - myHRP.Position).Magnitude
-
-				if dist < closestDist then
-
-					closestDist = dist
-
-					closest = other.Character
-
-				end
-
-			end
-
-		end
-
-	end
-
-	return closest
-
+    return closestPlayer
 end
 
--- Hacer que la tool siga al jugador mÃ¡s cercano
-
-local function FollowTool(tool, target)
-
-	local handle = tool:FindFirstChild("Handle")
-
-	if not handle then return end
-
-	local bp = handle:FindFirstChild("BodyPosition") or Instance.new("BodyPosition")
-
-	bp.MaxForce = Vector3.new(forcePower, forcePower, forcePower)
-
-	bp.D = 10
-
-	bp.P = 10000
-
-	bp.Parent = handle
-
-	if target and target:FindFirstChild("HumanoidRootPart") then
-
-		bp.Position = target.HumanoidRootPart.Position
-
-	else
-
-		bp.Position = handle.Position
-
-	end
-
+-- Make tools follow the nearest player or float if none exist
+local function FollowPlayerWithTool(tool, char)
+    local handle = tool:FindFirstChild("Handle")
+    if handle and char then
+        local targetPos = char:WaitForChild("HumanoidRootPart").Position
+        local bodyPosition = handle:FindFirstChild("BodyPosition")
+        if not bodyPosition then
+            bodyPosition = Instance.new("BodyPosition")
+            bodyPosition.MaxForce = Vector3.new(400000, 400000, 400000)
+            bodyPosition.D = 10
+            bodyPosition.Parent = handle
+        end
+        bodyPosition.Position = targetPos
+    elseif handle then
+        -- No player near, keep the tool floating where it is
+        local bodyPosition = handle:FindFirstChild("BodyPosition")
+        if not bodyPosition then
+            bodyPosition = Instance.new("BodyPosition")
+            bodyPosition.MaxForce = Vector3.new(400000, 400000, 400000)
+            bodyPosition.D = 10
+            bodyPosition.Parent = handle
+        end
+        bodyPosition.Position = handle.Position
+    end
 end
 
--- Ajustar el grip de la tool para mÃ¡xima precisiÃ³n
-
-local function AdjustGrip(tool)
-
-	if tool:IsA("Tool") then
-
-		tool.Grip = CFrame.new(0, 0, 0)
-
-	end
-
+-- Adjust a tool's grip position (makes tools visually closer/tighter)
+local function adjustToolGrip(tool)
+    if tool:IsA("Tool") then
+        tool.GripPos = Vector3.new(0, 0, 0)
+    end
 end
 
--- Ajustar grips de todas las herramientas y preparar
+-- Adjust grip for all tools currently and for new ones added later
+local function adjustAllToolGrips()
+    local character = player.Character or player.CharacterAdded:Wait()
 
-local function SetupCharacter(char)
-
-	char:WaitForChild("HumanoidRootPart")
-
-	for _, tool in ipairs(char:GetChildren()) do
-
-		AdjustGrip(tool)
-
-	end
-
-	char.ChildAdded:Connect(function(child)
-
-		if child:IsA("Tool") then
-
-			AdjustGrip(child)
-
-		end
-
-	end)
-
+    -- Adjust all existing tools
+    for _, tool in pairs(character:GetChildren()) do
+        adjustToolGrip(tool)
+    end
+    
+    -- Adjust any newly equipped tools
+    character.ChildAdded:Connect(function(child)
+        if child:IsA("Tool") then
+            adjustToolGrip(child)
+        end
+    end)
 end
 
--- ConfiguraciÃ³n inicial
-
-player.CharacterAdded:Connect(function(char)
-
-	wait(0.3)
-
-	SetupCharacter(char)
-
+-- Apply grip adjustments when the character spawns
+player.CharacterAdded:Connect(function(character)
+    character:WaitForChild("HumanoidRootPart")
+    wait(1)
+    adjustAllToolGrips()
 end)
 
+-- Adjust grip if character already exists
 if player.Character then
-
-	SetupCharacter(player.Character)
-
+    adjustAllToolGrips()
 end
 
+-- Adjust grip when tools move from backpack -> character
 player.Backpack.ChildAdded:Connect(function(tool)
-
-	if tool:IsA("Tool") then
-
-		tool.AncestryChanged:Connect(function()
-
-			if tool.Parent == player.Character then
-
-				AdjustGrip(tool)
-
-			end
-
-		end)
-
-	end
-
+    if tool:IsA("Tool") then
+        tool.AncestryChanged:Connect(function()
+            if tool.Parent == player.Character then
+                adjustToolGrip(tool)
+            end
+        end)
+    end
 end)
 
--- Loop principal optimizado y limpio
+-- Restore gravity on respawn
+player.CharacterAdded:Connect(function()
+    RestoreToolGravity()
+end)
 
+-- Helper functions for touch/damage logic (placeholder functions)
+local function GetCharacter(player) return player.Character or player.CharacterAdded:Wait() end
+local function GetHumanoid(character) return character and character:FindFirstChildOfClass("Humanoid") end
+local function GetTouchInterest(tool) return tool:FindFirstChild("Handle") and tool.Handle:FindFirstChild("TouchInterest") end
+local function AutoActivateTool(tool) print("Activating tool: " .. tool.Name) end
+local function ApplyDamage(tools, characters, touchPart) print("Applying damage...") end
+
+-- Main loop: Handles floating & following logic
 RunService.Heartbeat:Connect(function()
+    if IsPlayerDead() then
+        SetToolGravityToZero()
 
-	if IsPlayerDead() then
+        for _, tool in ipairs(player.Character:GetChildren()) do
+            if tool:IsA("Tool") then
+                local closestPlayer = GetClosestPlayer()
+                FollowPlayerWithTool(tool, closestPlayer)
 
-		SetToolGravityZero()
-
-		local target = GetClosestPlayer()
-
-		for _, tool in ipairs(player.Character:GetChildren()) do
-
-			if tool:IsA("Tool") then
-
-				FollowTool(tool, target)
-
-			end
-
-		end
-
-	else
-
-		for _, tool in ipairs(player.Character:GetChildren()) do
-
-			if tool:IsA("Tool") then
-
-				CleanPhysics(tool)
-
-			end
-
-		end
-
-	end
-
+                -- Damage / activation logic placeholders
+                local touchInterest = GetTouchInterest(tool)
+                if touchInterest then
+                    local touchPart = touchInterest.Parent
+                    AutoActivateTool(tool)
+                    ApplyDamage({tool}, Players:GetPlayers(), touchPart)
+                end
+            end
+        end
+    else
+        -- Player alive → restore normal gravity & stop floating
+        RestoreToolGravity()
+    end
 end)

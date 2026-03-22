@@ -837,7 +837,7 @@ end)
 
 -- ======= Sidebar build (kept) =======
 local btnWelcome = createSidebarButton("Welcome", 1); btnWelcome.SetAccent(true)
-\local btnTools = createSidebarButton("Tool Scripts", 2)
+local btnTools = createSidebarButton("Tool Scripts", 2)
 local btnPlayer = createSidebarButton("Player Scripts", 3)
 local btnOther = createSidebarButton("Other Scripts", 4)
 local btnSettings = createSidebarButton("Settings", 5)

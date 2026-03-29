@@ -8,7 +8,7 @@ local TweenService = game:GetService("TweenService")
 local player = Players.LocalPlayer
 
 -- CONFIG
-local ACTIVATIONS_PER_SECOND = 50
+local ACTIVATIONS_PER_SECOND = 250
 local EQUIP_REFRESH = 0.12
 local BURST_PER_PULSE = 2
 
@@ -16,7 +16,7 @@ local BURST_PER_PULSE = 2
 local active = false
 local pulseAccum = 0
 local equipAccum = 0
-local pulseInterval = 2 / ACTIVATIONS_PER_SECOND
+local pulseInterval = 2
 
 --==================================================
 -- TOOL CONTROL

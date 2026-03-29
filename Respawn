@@ -1,4 +1,4 @@
--- ⚡ QUANTUM INSTANT RESPAWN ENGINE
+-- ⚡ QUANTUM INSTANT RESPAWN ENGINE + UI
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -12,8 +12,8 @@ local TOGGLE_KEY = Enum.KeyCode.R
 local active = false
 local lastRespawn = 0
 
-local RESPAWN_COOLDOWN = 0.05   -- near theoretical safe minimum
-local FAILSAFE_REFIRE = 0.5      -- only if server ignores first
+local RESPAWN_COOLDOWN = 0.05
+local FAILSAFE_REFIRE = 0.5
 
 local diedLock = false
 local diedConn
@@ -21,7 +21,7 @@ local stateConn
 local charConn
 
 --==================================================
--- ⚡ TRUE INSTANT RESPAWN FIRE
+-- ⚡ TRUE INSTANT RESPAWN
 --==================================================
 
 local function fireRespawn()
@@ -44,14 +44,12 @@ local function fireRespawn()
 		end)
 	end
 
-	-- failsafe re-fire ONLY if still dead later
 	task.delay(FAILSAFE_REFIRE,function()
 
 		local char = player.Character
 		local hum = char and char:FindFirstChildOfClass("Humanoid")
 
 		if hum and hum.Health <= 0 then
-
 			pcall(function()
 				if GuideEvent then
 					GuideEvent:FireServer()
@@ -59,7 +57,6 @@ local function fireRespawn()
 					player:LoadCharacter()
 				end
 			end)
-
 		end
 
 		diedLock = false
@@ -82,18 +79,12 @@ local function hookCharacter(char)
 	local hum = char:WaitForChild("Humanoid",1)
 	if not hum then return end
 
-	-- ultra early detection
 	stateConn = hum.StateChanged:Connect(function(_,new)
-
-		if not active then return end
-
-		if new == Enum.HumanoidStateType.Dead then
+		if active and new == Enum.HumanoidStateType.Dead then
 			fireRespawn()
 		end
-
 	end)
 
-	-- backup detection
 	diedConn = hum.Died:Connect(function()
 		if active then
 			fireRespawn()
@@ -103,19 +94,43 @@ local function hookCharacter(char)
 end
 
 --==================================================
--- ⚡ TOGGLE
+-- ⚡ UI (MATCHES OVERDRIVE BUTTON)
 --==================================================
 
-local function toggle()
+local gui = Instance.new("ScreenGui", game.CoreGui)
+gui.ResetOnSpawn = false
 
-	active = not active
+local btn = Instance.new("TextButton", gui)
+btn.Size = UDim2.fromOffset(120,42)
+btn.Position = UDim2.new(1,-140,1,-130) -- ABOVE Overdrive button
+btn.BackgroundColor3 = Color3.fromRGB(20,20,35)
+btn.TextColor3 = Color3.fromRGB(255,60,60)
+btn.Text = "RESPAWN"
+btn.Font = Enum.Font.GothamBold
+btn.TextScaled = true
+btn.Active = true
+btn.Draggable = true
+
+Instance.new("UICorner",btn).CornerRadius = UDim.new(0,10)
+
+local stroke = Instance.new("UIStroke",btn)
+stroke.Color = Color3.fromRGB(255,60,60)
+
+--==================================================
+-- ⚡ TOGGLE SYSTEM
+--==================================================
+
+local function setState(state)
+
+	active = state
+
+	btn.Text = active and "RESPAWN: ON" or "RESPAWN: OFF"
 
 	if charConn then charConn:Disconnect() end
 	if diedConn then diedConn:Disconnect() end
 	if stateConn then stateConn:Disconnect() end
 
 	if active then
-
 		print("⚡ Quantum Respawn ON")
 
 		charConn = player.CharacterAdded:Connect(hookCharacter)
@@ -123,19 +138,21 @@ local function toggle()
 		if player.Character then
 			hookCharacter(player.Character)
 		end
-
 	else
-
 		print("⚡ Quantum Respawn OFF")
-
 	end
 
 end
 
+btn.MouseButton1Click:Connect(function()
+	setState(not active)
+end)
+
+-- KEYBIND (still works)
 UIS.InputBegan:Connect(function(i,gp)
 	if not gp and i.KeyCode == TOGGLE_KEY then
-		toggle()
+		setState(not active)
 	end
 end)
 
-print("⚡ Quantum Respawn Ready")
+print("⚡ Quantum Respawn Ready (UI Loaded)")

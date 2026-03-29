@@ -16,7 +16,7 @@ local BURST_PER_PULSE = 2
 local active = false
 local pulseAccum = 0
 local equipAccum = 0
-local pulseInterval = 2
+local pulseInterval = 2 / ACTIVATIONS_PER_SECOND
 
 --==================================================
 -- TOOL CONTROL

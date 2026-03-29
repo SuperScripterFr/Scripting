@@ -1,0 +1,234 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local localPlayer = Players.LocalPlayer
+local mouse = localPlayer:GetMouse()
+
+-- EDIT THESE to match your tool/remote names (case sensitive)
+local toolName = "Axe Smash"        -- Name of the tool in Backpack/Character
+local remoteName = "Remote"         -- Name of the RemoteEvent/RemoteFunction inside the tool
+
+-- Defaults
+local spamRate = 0.06               -- seconds between fires (0.06 ≈ ~16.6 fires/sec). Increase to slow down.
+local isSpamming = false
+local spamThread = nil
+
+-- Utility: find tool in Character or Backpack
+local function findTool()
+    local char = localPlayer.Character
+    if char then
+        local t = char:FindFirstChild(toolName)
+        if t and t:IsA("Tool") then return t end
+    end
+    local pack = localPlayer:FindFirstChildOfClass("Backpack")
+    if pack then
+        local t = pack:FindFirstChild(toolName)
+        if t and t:IsA("Tool") then return t end
+    end
+    return nil
+end
+
+-- Utility: find remote inside tool
+local function findRemote(tool)
+    if not tool then return nil end
+    local r = tool:FindFirstChild(remoteName) or tool:FindFirstChildWhichIsA("RemoteEvent") or tool:FindFirstChildWhichIsA("RemoteFunction")
+    if r and (r:IsA("RemoteEvent") or r:IsA("RemoteFunction")) then
+        return r
+    end
+    return nil
+end
+
+-- Robust fire function: try to call appropriate remote type & expected args
+local function fireRemote(remote)
+    if not remote then return end
+
+    -- Try to guess what the remote expects:
+    -- Common patterns: FireServer(Vector3 position), FireServer(mouse.Hit, position, normal), FireServer(target, position), FireServer() etc.
+    -- We'll pass the most common: mouse.Hit (CFrame) and mouse.Hit.p (Vector3) where available.
+    local hit = nil
+    if mouse and mouse.Hit then
+        hit = mouse.Hit  -- this is a CFrame
+    end
+
+    local ok, err = pcall(function()
+        if remote:IsA("RemoteEvent") then
+            -- try FireServer with CFrame first, then Vector3, then no args
+            if hit then
+                remote:FireServer(hit)                     -- try sending CFrame
+            else
+                remote:FireServer()                        -- fallback
+            end
+        elseif remote:IsA("RemoteFunction") then
+            if hit then
+                remote:InvokeServer(hit)
+            else
+                remote:InvokeServer()
+            end
+        end
+    end)
+    if not ok then
+        -- If first pattern failed, attempt alternate patterns (Vector3)
+        pcall(function()
+            if remote:IsA("RemoteEvent") then
+                if hit then remote:FireServer(hit.Position) end
+            elseif remote:IsA("RemoteFunction") then
+                if hit then remote:InvokeServer(hit.Position) end
+            end
+        end)
+    end
+end
+
+-- Spam loop
+local function startSpamming(remote)
+    if isSpamming then return end
+    isSpamming = true
+
+    spamThread = coroutine.create(function()
+        while isSpamming and remote and remote.Parent do
+            -- ensure mouse position is up-to-date (LocalPlayer:GetMouse() updates automatically)
+            fireRemote(remote)
+            task.wait(spamRate)
+        end
+        isSpamming = false
+    end)
+    coroutine.resume(spamThread)
+end
+
+local function stopSpamming()
+    isSpamming = false
+    spamThread = nil
+end
+
+-- Simple UI (toggle + rate controls)
+local function buildUI()
+    local playerGui = localPlayer:WaitForChild("PlayerGui")
+    if playerGui:FindFirstChild("RemoteSpamGUI") then
+        playerGui.RemoteSpamGUI:Destroy()
+    end
+
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "RemoteSpamGUI"
+    screenGui.IgnoreGuiInset = true
+    screenGui.ResetOnSpawn = false
+    screenGui.Parent = playerGui
+
+    local frame = Instance.new("Frame")
+    frame.BackgroundTransparency = 0.35
+    frame.BackgroundColor3 = Color3.fromRGB(20,20,20)
+    frame.Size = UDim2.new(0, 220, 0, 110)
+    frame.Position = UDim2.new(0, 10, 0, 120)
+    frame.AnchorPoint = Vector2.new(0,0)
+    frame.Parent = screenGui
+    frame.BorderSizePixel = 0
+    frame.ClipsDescendants = true
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, -12, 0, 26)
+    title.Position = UDim2.new(0, 6, 0, 6)
+    title.BackgroundTransparency = 1
+    title.Text = "Remote Spam"
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 14
+    title.TextColor3 = Color3.fromRGB(230,230,230)
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.Parent = frame
+
+    local toggleBtn = Instance.new("TextButton")
+    toggleBtn.Size = UDim2.new(0, 80, 0, 30)
+    toggleBtn.Position = UDim2.new(0, 6, 0, 38)
+    toggleBtn.BackgroundColor3 = Color3.fromRGB(80,80,80)
+    toggleBtn.TextColor3 = Color3.fromRGB(230,230,230)
+    toggleBtn.Font = Enum.Font.GothamBold
+    toggleBtn.TextSize = 14
+    toggleBtn.Text = "OFF"
+    toggleBtn.Parent = frame
+
+    local rateLabel = Instance.new("TextLabel")
+    rateLabel.Size = UDim2.new(0, 120, 0, 20)
+    rateLabel.Position = UDim2.new(0, 6, 0, 76)
+    rateLabel.BackgroundTransparency = 1
+    rateLabel.Text = string.format("Rate: %.3fs", spamRate)
+    rateLabel.Font = Enum.Font.Gotham
+    rateLabel.TextSize = 12
+    rateLabel.TextColor3 = Color3.fromRGB(200,200,200)
+    rateLabel.TextXAlignment = Enum.TextXAlignment.Left
+    rateLabel.Parent = frame
+
+    local plus = Instance.new("TextButton")
+    plus.Size = UDim2.new(0, 24, 0, 24)
+    plus.Position = UDim2.new(1, -30, 0, 6)
+    plus.AnchorPoint = Vector2.new(1,0)
+    plus.Text = "+"
+    plus.Font = Enum.Font.Gotham
+    plus.TextSize = 18
+    plus.Parent = frame
+
+    local minus = Instance.new("TextButton")
+    minus.Size = UDim2.new(0, 24, 0, 24)
+    minus.Position = UDim2.new(1, -30, 0, 38)
+    minus.AnchorPoint = Vector2.new(1,0)
+    minus.Text = "–"
+    minus.Font = Enum.Font.Gotham
+    minus.TextSize = 18
+    minus.Parent = frame
+
+    -- interactions
+    toggleBtn.MouseButton1Click:Connect(function()
+        -- find current tool & remote each toggle so it uses latest tool state
+        local tool = findTool()
+        local remote = findRemote(tool)
+        if not remote then
+            -- try to search workspace tools if dropped
+            if tool == nil then
+                warn("RemoteSpam: Tool not found ("..tostring(toolName).."). Put tool in Backpack or equip it.")
+            else
+                warn("RemoteSpam: Remote not found inside tool; searched for '"..tostring(remoteName).."'.")
+            end
+            return
+        end
+
+        if not isSpamming then
+            toggleBtn.Text = "ON"
+            toggleBtn.BackgroundColor3 = Color3.fromRGB(60,150,60)
+            startSpamming(remote)
+        else
+            toggleBtn.Text = "OFF"
+            toggleBtn.BackgroundColor3 = Color3.fromRGB(80,80,80)
+            stopSpamming()
+        end
+    end)
+
+    plus.MouseButton1Click:Connect(function()
+        -- decrease interval (faster) but clamp minimally
+        spamRate = math.clamp(spamRate - 0.01, 0.01, 3)
+        rateLabel.Text = string.format("Rate: %.3fs", spamRate)
+    end)
+
+    minus.MouseButton1Click:Connect(function()
+        spamRate = math.clamp(spamRate + 0.02, 0.01, 3)
+        rateLabel.Text = string.format("Rate: %.3fs", spamRate)
+    end)
+end
+
+-- Build UI
+buildUI()
+
+-- Optional: Auto-prep when character spawns (helpful to ensure tool is present)
+local function onCharacterAdded(char)
+    -- small delay so Backpack/Tools load
+    task.wait(0.4)
+    local tool = findTool()
+    if tool then
+        -- tool found; nothing to do yet
+    end
+end
+
+local function onPlayerAdded(plr)
+    if plr == localPlayer then
+        localPlayer.CharacterAdded:Connect(onCharacterAdded)
+        if localPlayer.Character then onCharacterAdded(localPlayer.Character) end
+    end
+end
+
+onPlayerAdded(localPlayer)

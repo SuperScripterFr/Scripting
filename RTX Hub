@@ -665,6 +665,7 @@ oHeader.Parent = otherPage
 
 local otherScripts = {
 	{"Axe Smash Spam", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Axe%20Smash%20Spam"},
+	{"Emote GUI", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Emote%20GUI"},
     {"WIP", ""},
     {"WIP", ""},
 }

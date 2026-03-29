@@ -10,7 +10,7 @@ local player = Players.LocalPlayer
 -- CONFIG
 local ACTIVATIONS_PER_SECOND = 50
 local EQUIP_REFRESH = 0.12
-local BURST_PER_PULSE = 1
+local BURST_PER_PULSE = 2
 
 -- STATE
 local active = false

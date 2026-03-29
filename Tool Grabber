@@ -1,4 +1,4 @@
--- ⚡ SMART BURST TOOL GRABBER (ULTRA OPTIMIZED)
+-- ⚡ QUANTUM INSTANT PARALLEL TOOL GRABBER
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -7,142 +7,157 @@ local player = Players.LocalPlayer
 local Tycoons = workspace:WaitForChild("Tycoons")
 
 -- CONFIG
-local RESPAWN_TIME = 0
-local TOUCHES_PER_PAD = 6
-local BACKGROUND_TOUCHES = 2
 local PAD_RANGE = 1000
-local CYCLE_DELAY = 0
+local TOUCH_BURST = 8 -- touches per frame per pad
 
 local allowedBases = {Stone=true, Magic=true, Storm=true, Robotic=true}
 local excludedBases = {Insanity=true, Giant=true, Dark=true, Spike=true, Web=true, Strong=true}
 
-local requiredTools = {
-	["Energy Sword"]=true,
-	["Fist"]=true,
-	["Staff"]=true,
-	["Axe"]=true,
+-- TOOL -> BASE MAPPING
+local toolToBase = {
+	["Energy Sword"] = "Stone",
+	["Staff"] = "Magic",
+	["Axe"] = "Storm",
+	["Fist"] = "Robotic",
 }
 
 -- internals
-local pads = {}
-local padIndex = 1
-local grabbing = false
+local padsByBase = {}
+local activeLoops = {}
 
--- register pads
+--==================================================
+-- 🔍 PAD REGISTRATION
+--==================================================
+
 local function register(pad)
+
 	local base = pad.Parent and pad.Parent.Parent
 	if not base then return end
+
 	if excludedBases[base.Name] then return end
 	if not allowedBases[base.Name] then return end
 
-	for _,p in ipairs(pads) do
-		if p == pad then return end
-	end
+	padsByBase[base.Name] = padsByBase[base.Name] or {}
 
-	table.insert(pads,pad)
+	table.insert(padsByBase[base.Name], pad)
+
 end
 
 for _,d in ipairs(Tycoons:GetDescendants()) do
-	if d:IsA("TouchTransmitter") and d.Parent and d.Parent.Parent and d.Parent.Parent.Name:find("GearGiver1") then
+	if d:IsA("TouchTransmitter")
+	and d.Parent
+	and d.Parent.Parent
+	and d.Parent.Parent.Name:find("GearGiver1") then
 		register(d.Parent)
 	end
 end
 
 Tycoons.DescendantAdded:Connect(function(d)
-	if d:IsA("TouchTransmitter") and d.Parent and d.Parent.Parent and d.Parent.Parent.Name:find("GearGiver1") then
+	if d:IsA("TouchTransmitter")
+	and d.Parent
+	and d.Parent.Parent
+	and d.Parent.Parent.Name:find("GearGiver1") then
 		register(d.Parent)
 	end
 end)
 
--- tool check
-local function haveTools()
-	local found = {}
+--==================================================
+-- 🧠 TOOL DETECTION
+--==================================================
 
-	local function scan(c)
-		if not c then return end
-		for _,t in ipairs(c:GetChildren()) do
-			if t:IsA("Tool") and requiredTools[t.Name] then
-				found[t.Name]=true
+local function hasTool(toolName)
+
+	local function scan(container)
+		if not container then return false end
+		for _,t in ipairs(container:GetChildren()) do
+			if t:IsA("Tool") and t.Name == toolName then
+				return true
 			end
 		end
 	end
 
-	scan(player.Backpack)
-	scan(player.Character)
+	return scan(player.Backpack) or scan(player.Character)
 
-	for name in pairs(requiredTools) do
-		if not found[name] then
-			return false
-		end
-	end
-
-	return true
 end
 
--- touch
+--==================================================
+-- ⚡ TOUCH FUNCTION
+--==================================================
+
 local function tap(root,pad)
 	pcall(firetouchinterest,root,pad,0)
 	pcall(firetouchinterest,root,pad,1)
 end
 
--- respawn grab burst
-local function respawnGrab()
+--==================================================
+-- 🚀 PER-TOOL PARALLEL LOOP
+--==================================================
 
-	grabbing = true
+local function startToolLoop(toolName)
 
-	local char = player.Character
-	if not char then grabbing=false return end
+	if activeLoops[toolName] then return end
 
-	local root = char:WaitForChild("HumanoidRootPart",2)
-	if not root then grabbing=false return end
+	local base = toolToBase[toolName]
+	if not base then return end
 
-	local t0 = os.clock()
+	activeLoops[toolName] = true
 
-	while os.clock()-t0 < RESPAWN_TIME do
+	task.spawn(function()
 
-		if haveTools() then break end
+		while activeLoops[toolName] do
 
-		local pad = pads[padIndex]
-		padIndex += 1
-		if padIndex > #pads then padIndex = 1 end
-
-		if pad and (pad.Position-root.Position).Magnitude < PAD_RANGE then
-			for i=1,TOUCHES_PER_PAD do
-				tap(root,pad)
+			-- STOP INSTANTLY IF TOOL ACQUIRED
+			if hasTool(toolName) then
+				activeLoops[toolName] = nil
+				break
 			end
+
+			local char = player.Character
+			local root = char and char:FindFirstChild("HumanoidRootPart")
+			if not root then
+				RunService.Heartbeat:Wait()
+				continue
+			end
+
+			local pads = padsByBase[base]
+
+			if pads then
+				for _,pad in ipairs(pads) do
+					if (pad.Position - root.Position).Magnitude < PAD_RANGE then
+						for i = 1, TOUCH_BURST do
+							tap(root,pad)
+						end
+					end
+				end
+			end
+
+			RunService.Heartbeat:Wait()
 		end
 
-		task.wait(CYCLE_DELAY)
+	end)
 
+end
+
+--==================================================
+-- 🔄 RESPAWN TRIGGER
+--==================================================
+
+local function startGrab()
+
+	for toolName in pairs(toolToBase) do
+		startToolLoop(toolName)
 	end
-
-	grabbing = false
 
 end
 
 player.CharacterAdded:Connect(function()
-	task.spawn(respawnGrab)
+	task.wait(0.05) -- tiny stabilization delay
+	startGrab()
 end)
 
--- background warming
-RunService.Heartbeat:Connect(function()
+-- also run immediately if already spawned
+if player.Character then
+	startGrab()
+end
 
-	if grabbing then return end
-
-	local char = player.Character
-	local root = char and char:FindFirstChild("HumanoidRootPart")
-	if not root then return end
-
-	local pad = pads[padIndex]
-	padIndex += 1
-	if padIndex > #pads then padIndex = 1 end
-
-	if pad and (pad.Position-root.Position).Magnitude < PAD_RANGE then
-		for i=1,BACKGROUND_TOUCHES do
-			tap(root,pad)
-		end
-	end
-
-end)
-
-print("⚡ Smart Burst Tool Grabber Loaded")
+print("⚡ Quantum Instant Tool Grabber Loaded")

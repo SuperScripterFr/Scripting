@@ -664,9 +664,9 @@ oHeader.Text = "Other Scripts"
 oHeader.Parent = otherPage
 
 local otherScripts = {
-    {"Attacker Tarcker", "https://raw.githubusercontent.com/GlitcherTheHacker/Roblox-Scripts/refs/heads/main/Attacker%20Tracker"},
-    {"Axe Smash Spam", "https://raw.githubusercontent.com/GlitcherTheHacker/Roblox-Scripts/refs/heads/main/Axe%20Smash%20Spam"},
-    {"Anti-GodMode", "https://pastefy.app/pyLRQ8bM/raw"},
+	{"Axe Smash Spam", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Axe%20Smash%20Spam"},
+    {"WIP", ""},
+    {"WIP", ""},
 }
 for i,t in ipairs(otherScripts) do
     local row = createActionButton(t[1], t[2])

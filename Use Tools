@@ -74,8 +74,19 @@ end
 -----------------------------------------------------------------
 -- Player Detection
 -----------------------------------------------------------------
-
 local DETECTION_RANGE = 60
+
+local function isEnemyAlive(root)
+	if not root then return false end
+
+	local character = root.Parent
+	if not character then return false end
+
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then return false end
+
+	return humanoid.Health > 0
+end
 
 local function isEnemyNearby()
 	local myChar = player.Character
@@ -85,8 +96,11 @@ local function isEnemyNearby()
 	for _, p in ipairs(Players:GetPlayers()) do
 		if p ~= player and p.Character then
 			local root = p.Character:FindFirstChild("HumanoidRootPart")
-			if root then
-				if (root.Position - myRoot.Position).Magnitude <= DETECTION_RANGE then
+
+			if root and isEnemyAlive(root) then
+				local dist = (root.Position - myRoot.Position).Magnitude
+
+				if dist <= DETECTION_RANGE then
 					return true
 				end
 			end
@@ -143,20 +157,23 @@ end
 ----------------------------------------------------------------
 -- ENGINE LOOP (STABILIZED)
 ----------------------------------------------------------------
-local lastCombatState = false
+local COMBAT_EXIT_DELAY = 0.1
+local lastEnemySeen = 0
 
 RunService.Heartbeat:Connect(function()
 
-	local enemyNearby = isEnemyNearby()
-
-	if enemyNearby and not lastCombatState then
-		-- ENTER COMBAT 🔥
-		equipTools()
-		task.defer(primeActivation) -- instant attack burst
+	if not active then return end
+	if isEnemyNearby() then
+		lastEnemySeen = tick()
 	end
 
-	lastCombatState = enemyNearby
+	local inCombat = (tick() - lastEnemySeen) <= COMBAT_EXIT_DELAY
+	if inCombat and not lastCombatState then
+		equipTools()
+		task.defer(primeActivation)
+	end
 
+	lastCombatState = inCombat
 end)
 
 RunService.PreSimulation:Connect(function(dt)

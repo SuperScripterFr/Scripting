@@ -226,12 +226,18 @@ local function updateText()
 	toggle.Text = active and "TOOLS: ON" or "TOOLS: OFF"
 end
 
+local function primeActivation()
+	refreshToolCache()
+	activateTools() -- fire immediately once
+end
+
 local function setState(state)
 	active = state
 	updateText()
 
 	if active then
 		equipTools()
+		task.defer(primeActivation) -- immediate burst after equip
 	else
 		unequipTools()
 	end
@@ -251,9 +257,10 @@ end)
 -- RESPAWN SAFETY
 ----------------------------------------------------------------
 player.CharacterAdded:Connect(function()
-	task.wait(0.1)
+	task.wait(0) -- small stabilization (important)
 	if active then
 		equipTools()
+		task.defer(primeActivation)
 	end
 end)
 

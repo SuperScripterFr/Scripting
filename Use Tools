@@ -43,7 +43,7 @@ end
 ----------------------------------------------------------------
 local ACTIVATIONS_PER_SECOND = 150
 local EQUIP_REFRESH_RATE     = 0
-local MAX_ACTIVATIONS_PER_FRAME = 6 -- prevents lag spikes
+local MAX_ACTIVATIONS_PER_FRAME = 2 -- prevents lag spikes
 
 ----------------------------------------------------------------
 -- STATE

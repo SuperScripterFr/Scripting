@@ -24,15 +24,12 @@ local charConn
 -- ⚡ TRUE INSTANT RESPAWN
 --==================================================
 
+local fired = false
+
 local function fireRespawn()
 
-	local now = os.clock()
-
-	if diedLock then return end
-	if now - lastRespawn < RESPAWN_COOLDOWN then return end
-
-	diedLock = true
-	lastRespawn = now
+	if fired then return end
+	fired = true
 
 	if GuideEvent then
 		pcall(function()
@@ -44,25 +41,10 @@ local function fireRespawn()
 		end)
 	end
 
-	task.delay(FAILSAFE_REFIRE,function()
-
-		local char = player.Character
-		local hum = char and char:FindFirstChildOfClass("Humanoid")
-
-		if hum and hum.Health <= 0 then
-			pcall(function()
-				if GuideEvent then
-					GuideEvent:FireServer()
-				else
-					player:LoadCharacter()
-				end
-			end)
-		end
-
-		diedLock = false
-
+	-- reset lock quickly (no multi-trigger spam)
+	task.delay(0.1, function()
+		fired = false
 	end)
-
 end
 
 --==================================================

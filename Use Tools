@@ -41,7 +41,7 @@ end
 ----------------------------------------------------------------
 -- CONFIG (SAFE MAX POWER)
 ----------------------------------------------------------------
-local ACTIVATIONS_PER_SECOND = 75
+local ACTIVATIONS_PER_SECOND = 90
 local EQUIP_REFRESH_RATE     = 0
 local MAX_ACTIVATIONS_PER_FRAME = 2 -- prevents lag spikes
 

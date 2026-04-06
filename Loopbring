@@ -126,14 +126,6 @@ layout.Padding = UDim.new(0,6)
 -- CORE LOOPBRING ENGINE
 -- =========================
 
-local function hideNonCharacterItems(char)
-	for _,item in ipairs(char:GetChildren()) do
-		if item:IsA("Tool") or item:IsA("Accessory") or item:IsA("Hat") or item:IsA("Model") then
-			item.Parent = nil
-		end
-	end
-end
-
 RunService.Heartbeat:Connect(function()
 
 	local myChar = LocalPlayer.Character
@@ -150,8 +142,6 @@ RunService.Heartbeat:Connect(function()
 
 		local root = char:FindFirstChild("HumanoidRootPart")
 		if not root then continue end
-
-		hideNonCharacterItems(char)
 
 		local newPos = myRoot.Position + myRoot.CFrame.LookVector * distance
 		root.CFrame = CFrame.new(newPos,myRoot.Position) * CFrame.Angles(0,math.rad(180),0)

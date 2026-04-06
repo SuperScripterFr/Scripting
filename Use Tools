@@ -9,70 +9,46 @@ local TweenService = game:GetService("TweenService")
 local player = Players.LocalPlayer
 
 ----------------------------------------------------------------
--- THEME (NEON BLUE CYBER STYLE)
+-- THEME (MATCHES RTX HUB)
 ----------------------------------------------------------------
 local Theme = {
-	Accent = Color3.fromRGB(80,180,255),
-	Accent2 = Color3.fromRGB(0,140,255),
-	Glass  = Color3.fromRGB(10,14,20),
-	Text   = Color3.fromRGB(220,240,255),
-	Stroke = Color3.fromRGB(80,200,255)
+	Accent = Color3.fromRGB(60,60,255),
+	Glass  = Color3.fromRGB(18,18,22),
+	Text   = Color3.fromRGB(40,40,255),
+	Stroke = Color3.fromRGB(70,70,255)
 }
 
-local ANIM = TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+local ANIM = TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
 
-----------------------------------------------------------------
--- HELPERS
-----------------------------------------------------------------
 local function round(i,r)
 	local c = Instance.new("UICorner")
 	c.CornerRadius = UDim.new(0, r or 14)
 	c.Parent = i
 end
 
-local function stroke(i, thick, color)
+local function stroke(i, thick)
 	local s = Instance.new("UIStroke")
-	s.Color = color or Theme.Stroke
+	s.Color = Theme.Stroke
 	s.Thickness = thick or 1
-	s.Transparency = 0.3
 	s.Parent = i
 end
 
 ----------------------------------------------------------------
--- CONFIG (SAFE MAX POWER)
+-- CONFIG — SAFE MAX POWER
 ----------------------------------------------------------------
-local ACTIVATIONS_PER_SECOND = 90
+local ACTIVATIONS_PER_SECOND = 95  -- Slightly stronger than before
 local EQUIP_REFRESH_RATE     = 0
-local MAX_ACTIVATIONS_PER_FRAME = 2 -- prevents lag spikes
 
 ----------------------------------------------------------------
 -- STATE
 ----------------------------------------------------------------
-local active = false
-local pulseAccum = 0
-local equipAccum = 0
-local pulseInterval = 1 / ACTIVATIONS_PER_SECOND
+local active          = false
+local pulseAccum     = 0
+local equipAccum     = 0
+local pulseInterval  = 1 / ACTIVATIONS_PER_SECOND
 
 ----------------------------------------------------------------
--- TOOL CACHE (BIG PERFORMANCE WIN)
-----------------------------------------------------------------
-local cachedTools = {}
-
-local function refreshToolCache()
-	local char = player.Character
-	cachedTools = {}
-
-	if not char then return end
-
-	for _, t in ipairs(char:GetChildren()) do
-		if t:IsA("Tool") then
-			table.insert(cachedTools, t)
-		end
-	end
-end
-
-----------------------------------------------------------------
--- TOOL LOGIC
+-- TOOL LOGIC (HEADLESS)
 ----------------------------------------------------------------
 local function equipTools()
 	local char, bp = player.Character, player.Backpack
@@ -83,8 +59,6 @@ local function equipTools()
 			t.Parent = char
 		end
 	end
-
-	refreshToolCache()
 end
 
 local function unequipTools()
@@ -96,21 +70,15 @@ local function unequipTools()
 			t.Parent = bp
 		end
 	end
-
-	refreshToolCache()
 end
 
 local function activateTools()
-	-- limit activations per frame (prevents lag spikes)
-	local count = 0
+	local char = player.Character
+	if not char then return end
 
-	for _, t in ipairs(cachedTools) do
-		if count >= MAX_ACTIVATIONS_PER_FRAME then break end
-		if t and t.Parent then
-			pcall(function()
-				t:Activate()
-			end)
-			count += 1
+	for _, t in ipairs(char:GetChildren()) do
+		if t:IsA("Tool") then
+			pcall(t.Activate, t)
 		end
 	end
 end
@@ -120,9 +88,6 @@ end
 ----------------------------------------------------------------
 RunService.Heartbeat:Connect(function(dt)
 	if not active then return end
-
-	-- clamp dt for safety against frame drops
-	dt = math.clamp(dt, 0, 0.1)
 
 	equipAccum += dt
 	if equipAccum >= EQUIP_REFRESH_RATE then
@@ -134,8 +99,6 @@ end)
 RunService.PreSimulation:Connect(function(dt)
 	if not active then return end
 
-	dt = math.clamp(dt, 0, 0.1)
-
 	pulseAccum += dt
 	while pulseAccum >= pulseInterval do
 		pulseAccum -= pulseInterval
@@ -144,78 +107,57 @@ RunService.PreSimulation:Connect(function(dt)
 end)
 
 ----------------------------------------------------------------
--- UI — CYBER NEON PANEL
+-- UI — GLASS TOGGLE
 ----------------------------------------------------------------
 local gui = Instance.new("ScreenGui")
 gui.Name = "RTXUseTools"
 gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Global
 gui.Parent = game:GetService("CoreGui")
 
-local toggle = Instance.new("TextButton")
-toggle.Size = UDim2.fromOffset(200, 70)
+local toggle = Instance.new("TextButton", gui)
+toggle.Size = UDim2.fromOffset(180, 64)
 toggle.Position = UDim2.fromScale(0.98, 0.55)
 toggle.AnchorPoint = Vector2.new(1,0.5)
-toggle.Text = "TOOLS: OFF"
+toggle.Text = "USE TOOLS: OFF"
 toggle.Font = Enum.Font.GothamBold
-toggle.TextSize = 16
+toggle.TextSize = 15
 toggle.TextColor3 = Theme.Text
 toggle.BackgroundColor3 = Theme.Glass
-toggle.BackgroundTransparency = 0.1
+toggle.BackgroundTransparency = 0.08
 toggle.AutoButtonColor = false
-toggle.Parent = gui
-toggle.ZIndex = 10
 toggle.Active = true
 toggle.Draggable = true
+toggle.ZIndex = 9999
 
-round(toggle, 16)
-stroke(toggle, 2)
+round(toggle,16)
+stroke(toggle,2)
 
--- gradient glow
-local grad = Instance.new("UIGradient")
-grad.Color = ColorSequence.new{
-	ColorSequenceKeypoint.new(0, Theme.Accent),
-	ColorSequenceKeypoint.new(1, Theme.Accent2)
-}
-grad.Rotation = 45
-grad.Parent = toggle
-
--- animated glow
-local glow = Instance.new("UIStroke")
+local glow = Instance.new("UIStroke", toggle)
 glow.Color = Theme.Accent
 glow.Thickness = 2
-glow.Transparency = 0.4
-glow.Parent = toggle
-
-----------------------------------------------------------------
--- UI ANIMATION LOOP (NEON PULSE)
-----------------------------------------------------------------
-task.spawn(function()
-	while true do
-		if active then
-			TweenService:Create(glow, TweenInfo.new(1), {
-				Transparency = 0.15
-			}):Play()
-		else
-			TweenService:Create(glow, TweenInfo.new(1), {
-				Transparency = 0.6
-			}):Play()
-		end
-		task.wait(1)
-	end
-end)
+glow.Transparency = 0.6
 
 ----------------------------------------------------------------
 -- UI FEEDBACK
 ----------------------------------------------------------------
 toggle.MouseEnter:Connect(function()
 	TweenService:Create(toggle, ANIM, {
-		Size = UDim2.fromOffset(210, 76)
+		Size = UDim2.fromOffset(190, 70)
+	}):Play()
+
+	TweenService:Create(glow, ANIM, {
+		Transparency = 0.25
 	}):Play()
 end)
 
 toggle.MouseLeave:Connect(function()
 	TweenService:Create(toggle, ANIM, {
-		Size = UDim2.fromOffset(200, 70)
+		Size = UDim2.fromOffset(180, 64)
+	}):Play()
+
+	TweenService:Create(glow, ANIM, {
+		Transparency = 0.6
 	}):Play()
 end)
 
@@ -223,12 +165,7 @@ end)
 -- TOGGLE LOGIC
 ----------------------------------------------------------------
 local function updateText()
-	toggle.Text = active and "TOOLS: ON" or "TOOLS: OFF"
-end
-
-local function primeActivation()
-	refreshToolCache()
-	activateTools() -- fire immediately once
+	toggle.Text = active and "USE TOOLS: ON" or "USE TOOLS: OFF"
 end
 
 local function setState(state)
@@ -237,7 +174,6 @@ local function setState(state)
 
 	if active then
 		equipTools()
-		task.defer(primeActivation) -- immediate burst after equip
 	else
 		unequipTools()
 	end
@@ -248,7 +184,7 @@ toggle.MouseButton1Click:Connect(function()
 end)
 
 UIS.InputBegan:Connect(function(i,g)
-	if not g and i.KeyCode == Enum.KeyCode.E then
+	if not g and i.KeyCode == Enum.KeyCode.Q then
 		setState(not active)
 	end
 end)
@@ -257,12 +193,11 @@ end)
 -- RESPAWN SAFETY
 ----------------------------------------------------------------
 player.CharacterAdded:Connect(function()
-	task.wait(0) -- small stabilization (important)
+	task.wait(0.1)
 	if active then
 		equipTools()
-		task.defer(primeActivation)
 	end
 end)
 
 updateText()
-print("[RTX] Upgraded Use Tools initialized")
+print("[RTX] Use Tools initialized")

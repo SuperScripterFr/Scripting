@@ -83,53 +83,26 @@ local function activateTools()
 	end
 end
 
-local DETECTION_RANGE = 40
-local BURST_TIME = 0.15
-local BURST_COOLDOWN = 0.12
+----------------------------------------------------------------
+-- ENGINE LOOP (STABILIZED)
+----------------------------------------------------------------
+RunService.Heartbeat:Connect(function(dt)
+	if not active then return end
 
-local lastBurst = 0
-local bursting = false
-
-local function isEnemyNearby()
-	local myChar = player.Character
-	local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
-	if not myRoot then return false end
-
-	for _, p in ipairs(Players:GetPlayers()) do
-		if p ~= player and p.Character then
-			local hum = p.Character:FindFirstChildOfClass("Humanoid")
-			local root = p.Character:FindFirstChild("HumanoidRootPart")
-
-			if hum and hum.Health > 0 and root then
-				if (root.Position - myRoot.Position).Magnitude <= DETECTION_RANGE then
-					return true
-				end
-			end
-		end
+	equipAccum += dt
+	if equipAccum >= EQUIP_REFRESH_RATE then
+		equipAccum = 0
+		equipTools()
 	end
-
-	return false
-end
+end)
 
 RunService.PreSimulation:Connect(function(dt)
 	if not active then return end
 
-	local now = os.clock()
-
-	if isEnemyNearby() then
-		if not bursting and (now - lastBurst) > BURST_COOLDOWN then
-			bursting = true
-			lastBurst = now
-
-			-- ⚡ BURST WINDOW
-			local endTime = now + BURST_TIME
-			while os.clock() < endTime do
-				activateTools()
-				RunService.Heartbeat:Wait()
-			end
-
-			bursting = false
-		end
+	pulseAccum += dt
+	while pulseAccum >= pulseInterval do
+		pulseAccum -= pulseInterval
+		activateTools()
 	end
 end)
 

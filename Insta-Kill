@@ -73,6 +73,7 @@ task.spawn(function()
                 if fightEvent then
                     autoEquip(tool)
                     fightEvent:FireServer() -- One powerful hit per scan
+                    fightEvent:FireServer()
                 end
 
                 if touchPart then

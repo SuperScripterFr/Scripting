@@ -36,8 +36,8 @@ end
 ----------------------------------------------------------------
 -- CONFIG — SAFE MAX POWER
 ----------------------------------------------------------------
-local ACTIVATIONS_PER_SECOND = 65  -- Slightly stronger than before
-local EQUIP_REFRESH_RATE     = 0
+local ACTIVATIONS_PER_SECOND = 45  -- Slightly stronger than before
+local EQUIP_REFRESH_RATE     = 0.15
 
 ----------------------------------------------------------------
 -- STATE
@@ -96,12 +96,12 @@ RunService.Heartbeat:Connect(function(dt)
 	end
 end)
 
-RunService.PreSimulation:Connect(function(dt)
+RunService.Heartbeat:Connect(function(dt)
 	if not active then return end
 
 	pulseAccum += dt
-	while pulseAccum >= pulseInterval do
-		pulseAccum -= pulseInterval
+	if pulseAccum >= pulseInterval then
+		pulseAccum = 0
 		activateTools()
 	end
 end)
@@ -192,10 +192,12 @@ end)
 ----------------------------------------------------------------
 -- RESPAWN SAFETY
 ----------------------------------------------------------------
-player.CharacterAdded:Connect(function()
-	task.wait(0.1)
+player.CharacterAdded:Connect(function(char)
+	task.wait(0.05) -- tiny delay for tools to exist
+	
 	if active then
 		equipTools()
+		activateTools() -- 🔥 instant first-frame hit
 	end
 end)
 

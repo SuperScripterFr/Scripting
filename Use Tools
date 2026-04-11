@@ -86,23 +86,29 @@ end
 ----------------------------------------------------------------
 -- ENGINE LOOP (STABILIZED)
 ----------------------------------------------------------------
-RunService.Heartbeat:Connect(function(dt)
+local BURST_RATE = 0.12
+local BURST_DURATION = 0.1
+
+local lastBurst = 0
+local bursting = false
+
+RunService.PreSimulation:Connect(function()
 	if not active then return end
 
-	equipAccum += dt
-	if equipAccum >= EQUIP_REFRESH_RATE then
-		equipAccum = 0
-		equipTools()
-	end
-end)
+	local now = os.clock()
 
-RunService.Heartbeat:Connect(function(dt)
-	if not active then return end
+	if not bursting and (now - lastBurst) > BURST_RATE then
+		bursting = true
+		lastBurst = now
 
-	pulseAccum += dt
-	if pulseAccum >= pulseInterval then
-		pulseAccum = 0
-		activateTools()
+		local endTime = now + BURST_DURATION
+
+		while os.clock() < endTime do
+			activateTools()
+			RunService.Heartbeat:Wait()
+		end
+
+		bursting = false
 	end
 end)
 
@@ -192,10 +198,14 @@ end)
 ----------------------------------------------------------------
 -- RESPAWN SAFETY
 ----------------------------------------------------------------
-player.CharacterAdded:Connect(function(char)	
+player.CharacterAdded:Connect(function(char)
 	if active then
 		equipTools()
-		activateTools() -- 🔥 instant first-frame hit
+
+		-- ⚡ WAIT 1 FRAME (THIS IS THE SECRET)
+		RunService.Heartbeat:Wait()
+
+		activateTools()
 	end
 end)
 

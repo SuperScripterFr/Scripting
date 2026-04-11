@@ -51,7 +51,7 @@ local function fireRespawn()
 
 	-- ⚡ SINGLE + MICRO FOLLOW-UP (NOT SPAM)
 	attempt()
-	task.delay(0.05, attempt) -- one backup shot
+	task.delay(0.02, attempt) -- one backup shot
 
 	-- ⚡ reset
 	task.delay(0.2, function()

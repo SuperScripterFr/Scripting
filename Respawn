@@ -12,7 +12,7 @@ local TOGGLE_KEY = Enum.KeyCode.R
 local active = false
 local lastRespawn = 0
 
-local RESPAWN_COOLDOWN = 0.
+local RESPAWN_COOLDOWN = 0
 local FAILSAFE_REFIRE = 0.1
 
 local diedLock = false

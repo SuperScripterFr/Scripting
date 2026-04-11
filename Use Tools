@@ -211,7 +211,7 @@ task.spawn(function()
 
 		if char and char ~= lastChar then
 			lastChar = char
-			spawnHandled = flase
+			spawnHandled = false
 
 			if active then
 				task.spawn(function()
@@ -233,7 +233,6 @@ task.spawn(function()
 
 		RunService.Heartbeat:Wait()
 	end
-	spawnHandled = false
 end)
 
 ----------------------------------------------------------------
@@ -263,7 +262,6 @@ player.CharacterAdded:Connect(function(char)
 			RunService.Heartbeat:Wait()
 		end
 	end)
-	spawnHandled = false
 end)
 
 updateText()

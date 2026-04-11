@@ -55,7 +55,7 @@ local function equipTools()
 	if not char or not bp then return end
 
 	for _, t in ipairs(bp:GetChildren()) do
-		if t:IsA("Tool") then
+		if t:IsA("Tool") and t.Parent ~= char then
 			t.Parent = char
 		end
 	end
@@ -102,13 +102,14 @@ RunService.PreSimulation:Connect(function()
 		lastBurst = now
 
 		local endTime = now + BURST_DURATION
-
-		while os.clock() < endTime do
-			activateTools()
-			RunService.Heartbeat:Wait()
-		end
-
-		bursting = false
+		
+		task.spawn(function()
+			while os.clock() < endTime do
+				activateTools()
+				RunService.Heartbeat:Wait()
+			end
+			bursting = false
+		end)
 	end
 end)
 
@@ -230,14 +231,27 @@ task.spawn(function()
 end)
 
 player.CharacterAdded:Connect(function(char)
-	if active then
-		equipTools()
+	if not active then return end
 
-		-- ⚡ WAIT 1 FRAME (THIS IS THE SECRET)
-		RunService.Heartbeat:Wait()
+	task.spawn(function()
 
-		activateTools()
-	end
+		local root = char:WaitForChild("HumanoidRootPart")
+
+		local start = os.clock()
+
+		-- ⚡ FORCE EQUIP WINDOW (VERY IMPORTANT)
+		while os.clock() - start < 0.3 do
+			equipTools()
+			RunService.Heartbeat:Wait()
+		end
+
+		-- ⚡ FINAL BURST
+		for i = 1, 3 do
+			activateTools()
+			RunService.Heartbeat:Wait()
+		end
+
+	end)
 end)
 
 updateText()

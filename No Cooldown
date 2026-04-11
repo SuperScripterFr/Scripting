@@ -15,11 +15,11 @@ hookfunction(spawn, function(func)
 end)
 
 hookfunction(wait, function()
-	return RunService.PreSimulation:Wait()
+	return RunService.PostSimulation:Wait()
 end)
 
 hookfunction(task.wait, function()
-	return RunService.PreSimulation:Wait()
+	return RunService.PostSimulation:Wait()
 end)
 
 print("⚡ No Cooldown Running")

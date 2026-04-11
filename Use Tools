@@ -84,36 +84,6 @@ local function activateTools()
 end
 
 ----------------------------------------------------------------
--- ENGINE LOOP (STABILIZED)
-----------------------------------------------------------------
-local BURST_RATE = 0.12
-local BURST_DURATION = 0.1
-
-local lastBurst = 0
-local bursting = false
-
-RunService.PreSimulation:Connect(function()
-	if not active then return end
-
-	local now = os.clock()
-
-	if not bursting and (now - lastBurst) > BURST_RATE then
-		bursting = true
-		lastBurst = now
-
-		local endTime = now + BURST_DURATION
-		
-		task.spawn(function()
-			while os.clock() < endTime do
-				activateTools()
-				RunService.Heartbeat:Wait()
-			end
-			bursting = false
-		end)
-	end
-end)
-
-----------------------------------------------------------------
 -- UI — GLASS TOGGLE
 ----------------------------------------------------------------
 local gui = Instance.new("ScreenGui")

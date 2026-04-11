@@ -31,20 +31,33 @@ local function fireRespawn()
 	if fired then return end
 	fired = true
 
-	if GuideEvent then
-		pcall(function()
-			GuideEvent:FireServer()
+	local success = false
+
+	local function attempt()
+		if success then return end
+
+		local ok = pcall(function()
+			if GuideEvent then
+				GuideEvent:FireServer()
+			else
+				player:LoadCharacter()
+			end
 		end)
-	else
-		pcall(function()
-			player:LoadCharacter()
-		end)
+
+		if ok then
+			success = true
+		end
 	end
 
-	-- reset lock quickly (no multi-trigger spam)
-	task.delay(0.1, function()
+	-- ⚡ SINGLE + MICRO FOLLOW-UP (NOT SPAM)
+	attempt()
+	task.delay(0.05, attempt) -- one backup shot
+
+	-- ⚡ reset
+	task.delay(0.2, function()
 		fired = false
 	end)
+
 end
 
 --==================================================
@@ -53,22 +66,26 @@ end
 
 local function hookCharacter(char)
 
-	diedLock = false
-
 	if diedConn then diedConn:Disconnect() end
 	if stateConn then stateConn:Disconnect() end
 
 	local hum = char:WaitForChild("Humanoid",1)
 	if not hum then return end
 
-	stateConn = hum.StateChanged:Connect(function(_,new)
-		if active and new == Enum.HumanoidStateType.Dead then
+	local triggered = false
+
+	-- ⚡ PRE-DEATH DETECTION (FASTEST POSSIBLE)
+	stateConn = hum.HealthChanged:Connect(function(hp)
+		if active and not triggered and hp <= 0 then
+			triggered = true
 			fireRespawn()
 		end
 	end)
 
+	-- ⚡ FALLBACK (in case game blocks HealthChanged)
 	diedConn = hum.Died:Connect(function()
-		if active then
+		if active and not triggered then
+			triggered = true
 			fireRespawn()
 		end
 	end)

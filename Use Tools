@@ -198,6 +198,37 @@ end)
 ----------------------------------------------------------------
 -- RESPAWN SAFETY
 ----------------------------------------------------------------
+task.spawn(function()
+
+	local lastChar = nil
+
+	while true do
+		local char = player.Character
+
+		if char and char ~= lastChar then
+			lastChar = char
+
+			if active then
+				task.spawn(function()
+					local root = char:FindFirstChild("HumanoidRootPart") or char:WaitForChild("HumanoidRootPart")
+
+					-- ⚡ EQUIP IMMEDIATELY (EARLIER THAN CharacterAdded)
+					equipTools()
+
+					-- ⚡ MICRO BURST INSTANT
+					for i = 1, 2 do
+						activateTools()
+						RunService.Heartbeat:Wait()
+					end
+				end)
+			end
+		end
+
+		RunService.Heartbeat:Wait()
+	end
+
+end)
+
 player.CharacterAdded:Connect(function(char)
 	if active then
 		equipTools()

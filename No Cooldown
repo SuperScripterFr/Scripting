@@ -1,4 +1,5 @@
--- ⚡ No Cooldown V6(7) (Cooldown Breaker + Combat Loop)
+-- ⚡ No Cooldown
+
 local RunService = game:GetService("RunService")
 
 --================================================
@@ -13,12 +14,28 @@ hookfunction(task.wait, function()
 	return RunService.PostSimulation:Wait()
 end)
 
+hookfunction(wait, function()
+	return RunService.Heartbeat:Wait()
+end)
+
+hookfunction(task.wait, function()
+	return RunService.Heartbeat:Wait()
+end)
+
 hookfunction(delay, function(_,func)
 	task.spawn(func)
 end)
 
 hookfunction(spawn, function(func)
 	task.spawn(func)
+end)
+
+hookfunction(wait, function()
+	return RunService.PreSimulation:Wait()
+end)
+
+hookfunction(task.wait, function()
+	return RunService.PreSimulation:Wait()
 end)
 
 print("⚡ No Cooldown Running")

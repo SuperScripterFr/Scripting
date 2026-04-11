@@ -90,6 +90,24 @@ local function tap(root,pad)
 end
 
 --==================================================
+-- 🎯 CLOSEST PAD FINDER (NEW)
+--==================================================
+
+local function getClosestPad(pads, root)
+	local closest, dist
+
+	for _, pad in ipairs(pads) do
+		local d = (pad.Position - root.Position).Magnitude
+		if d < PAD_RANGE and (not dist or d < dist) then
+			dist = d
+			closest = pad
+		end
+	end
+
+	return closest
+end
+
+--==================================================
 -- 🚀 PER-TOOL PARALLEL LOOP
 --==================================================
 
@@ -122,16 +140,15 @@ local function startToolLoop(toolName)
 			local pads = padsByBase[base]
 
 			if pads then
-				for _,pad in ipairs(pads) do
-					if (pad.Position - root.Position).Magnitude < PAD_RANGE then
-						for i = 1, TOUCH_BURST do
-							tap(root,pad)
-						end
+				local pad = getClosestPad(pads, root)
+				if pad then
+					for i = 1, TOUCH_BURST do
+						tap(root, pad)
 					end
 				end
 			end
 
-			RunService.Heartbeat:Wait()
+			task.wait()
 		end
 
 	end)

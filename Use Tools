@@ -36,8 +36,8 @@ end
 ----------------------------------------------------------------
 -- CONFIG — SAFE MAX POWER
 ----------------------------------------------------------------
-local ACTIVATIONS_PER_SECOND = 65  -- Slightly stronger than before
-local EQUIP_REFRESH_RATE     = 0.15
+local ACTIVATIONS_PER_SECOND = 100  -- Slightly stronger than before
+local EQUIP_REFRESH_RATE     = 0
 
 ----------------------------------------------------------------
 -- STATE

@@ -196,9 +196,12 @@ UIS.InputBegan:Connect(function(i,g)
 	end
 end)
 
+
 ----------------------------------------------------------------
--- RESPAWN SAFETY
+-- Pre-Respawn
 ----------------------------------------------------------------
+local spawnHandled = false
+
 task.spawn(function()
 
 	local lastChar = nil
@@ -212,6 +215,8 @@ task.spawn(function()
 			if active then
 				task.spawn(function()
 					local root = char:FindFirstChild("HumanoidRootPart") or char:WaitForChild("HumanoidRootPart")
+
+					spawnHandled = true
 
 					-- ⚡ EQUIP IMMEDIATELY (EARLIER THAN CharacterAdded)
 					equipTools()
@@ -230,6 +235,9 @@ task.spawn(function()
 
 end)
 
+----------------------------------------------------------------
+-- RESPAWN SAFETY
+----------------------------------------------------------------
 player.CharacterAdded:Connect(function(char)
 	if not active then return end
 
@@ -238,6 +246,8 @@ player.CharacterAdded:Connect(function(char)
 		local root = char:WaitForChild("HumanoidRootPart")
 
 		local start = os.clock()
+
+		if spawnHandled then return end
 
 		-- ⚡ FORCE EQUIP WINDOW (VERY IMPORTANT)
 		while os.clock() - start < 0.3 do

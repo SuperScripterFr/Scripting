@@ -84,6 +84,29 @@ local function activateTools()
 end
 
 ----------------------------------------------------------------
+-- ENGINE LOOP (STABILIZED)
+----------------------------------------------------------------
+RunService.Heartbeat:Connect(function(dt)
+	if not active then return end
+
+	equipAccum += dt
+	if equipAccum >= EQUIP_REFRESH_RATE then
+		equipAccum = 0
+		equipTools()
+	end
+end)
+
+RunService.PreSimulation:Connect(function(dt)
+	if not active then return end
+
+	pulseAccum += dt
+	while pulseAccum >= pulseInterval do
+		pulseAccum -= pulseInterval
+		activateTools()
+	end
+end)
+
+----------------------------------------------------------------
 -- UI — GLASS TOGGLE
 ----------------------------------------------------------------
 local gui = Instance.new("ScreenGui")

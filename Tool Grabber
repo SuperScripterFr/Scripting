@@ -173,6 +173,30 @@ local function startGrab()
 
 end
 
+task.spawn(function()
+
+	local lastChar = nil
+
+	while true do
+		local char = player.Character
+
+		if char and char ~= lastChar then
+			lastChar = char
+
+			-- ⚡ fires slightly earlier than CharacterAdded
+			task.spawn(function()
+				local root = char:FindFirstChild("HumanoidRootPart") or char:WaitForChild("HumanoidRootPart")
+
+				-- 🚀 START TOOL GRAB HERE INSTANTLY
+				instantStart()
+			end)
+		end
+
+		task.wait() -- super fast polling
+	end
+
+end)
+
 player.CharacterAdded:Connect(function(char)
 	instantStart() -- start immediately
 end)

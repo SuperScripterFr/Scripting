@@ -86,7 +86,7 @@ end
 ----------------------------------------------------------------
 -- ENGINE LOOP (STABILIZED)
 ----------------------------------------------------------------
-RunService.Heartbeat:Connect(function(dt)
+RunService.PreSimulation:Connect(function(dt)
 	if not active then return end
 
 	equipAccum += dt
@@ -96,13 +96,22 @@ RunService.Heartbeat:Connect(function(dt)
 	end
 end)
 
+local function multiActivate()
+	activateTools() -- PreSim hit
+	RunService.Stepped:Wait()
+	activateTools() -- Mid-frame hit
+	RunService.Heartbeat:Wait()
+	activateTools() -- Post-frame hit
+end
+
 RunService.PreSimulation:Connect(function(dt)
 	if not active then return end
 
 	pulseAccum += dt
 	while pulseAccum >= pulseInterval do
 		pulseAccum -= pulseInterval
-		activateTools()
+
+		task.spawn(multiActivate)
 	end
 end)
 
@@ -208,9 +217,9 @@ task.spawn(function()
 
 			if active then
 				task.spawn(function()
-					local root = char:FindFirstChild("HumanoidRootPart")
-					if not root then return end
+
 					if spawnHandled then return end
+
 					spawnHandled = true
 
 					-- ⚡ EQUIP IMMEDIATELY (EARLIER THAN CharacterAdded)
@@ -236,9 +245,6 @@ player.CharacterAdded:Connect(function(char)
 	if not active then return end
 
 	task.spawn(function()
-
-		local root = char:FindFirstChild("HumanoidRootPart")
-		if not root then return end
 
 		local start = os.clock()
 

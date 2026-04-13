@@ -219,13 +219,13 @@ task.spawn(function()
 					-- ⚡ MICRO BURST INSTANT
 					for i = 1, 2 do
 						activateTools()
-						RunService.Heartbeat:Wait()
+						RunService.PreSimulation:Wait()
 					end
 				end)
 			end
 		end
 
-		RunService.Heartbeat:Wait()
+		RunService.PreSimulation:Wait()
 	end
 end)
 
@@ -237,7 +237,8 @@ player.CharacterAdded:Connect(function(char)
 
 	task.spawn(function()
 
-		local root = char:WaitForChild("HumanoidRootPart")
+		local root = char:FindFirstChild("HumanoidRootPart")
+		if not root then return end
 
 		local start = os.clock()
 
@@ -247,13 +248,13 @@ player.CharacterAdded:Connect(function(char)
 		-- ⚡ FORCE EQUIP WINDOW (VERY IMPORTANT)
 		while os.clock() - start < 0.3 do
 			equipTools()
-			RunService.Heartbeat:Wait()
+			RunService.PreSimulation:Wait()
 		end
 
 		-- ⚡ FINAL BURST
 		for i = 1, 3 do
 			activateTools()
-			RunService.Heartbeat:Wait()
+			RunService.PreSimulation:Wait()
 		end
 	end)
 end)

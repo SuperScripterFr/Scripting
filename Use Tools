@@ -224,6 +224,7 @@ task.spawn(function()
 
 					-- ⚡ EQUIP IMMEDIATELY (EARLIER THAN CharacterAdded)
 					equipTools()
+					activateTools()
 
 					-- ⚡ MICRO BURST INSTANT
 					for i = 1, 2 do
@@ -254,6 +255,7 @@ player.CharacterAdded:Connect(function(char)
 		-- ⚡ FORCE EQUIP WINDOW (VERY IMPORTANT)
 		while os.clock() - start < 0.3 do
 			equipTools()
+			activateTools()
 			RunService.PreSimulation:Wait()
 		end
 

@@ -86,7 +86,7 @@ end
 ----------------------------------------------------------------
 -- ENGINE LOOP (STABILIZED)
 ----------------------------------------------------------------
-RunService.PreSimulation:Connect(function(dt)
+RunService.PostSimulation:Connect(function(dt)
 	if not active then return end
 
 	equipAccum += dt
@@ -104,7 +104,7 @@ local function multiActivate()
 	activateTools() -- Post-frame hit
 end
 
-RunService.PreSimulation:Connect(function(dt)
+RunService.PostSimulation:Connect(function(dt)
 	if not active then return end
 
 	pulseAccum += dt
@@ -229,13 +229,13 @@ task.spawn(function()
 					-- ⚡ MICRO BURST INSTANT
 					for i = 1, 2 do
 						activateTools()
-						RunService.PreSimulation:Wait()
+						RunService.PostSimulation:Wait()
 					end
 				end)
 			end
 		end
 
-		RunService.PreSimulation:Wait()
+		RunService.PostSimulation:Wait()
 	end
 end)
 
@@ -256,13 +256,13 @@ player.CharacterAdded:Connect(function(char)
 		while os.clock() - start < 0.3 do
 			equipTools()
 			activateTools()
-			RunService.PreSimulation:Wait()
+			RunService.PostSimulation:Wait()
 		end
 
 		-- ⚡ FINAL BURST
 		for i = 1, 3 do
 			activateTools()
-			RunService.PreSimulation:Wait()
+			RunService.PostSimulation:Wait()
 		end
 	end)
 end)

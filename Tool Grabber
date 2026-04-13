@@ -43,21 +43,29 @@ local function register(pad)
 
 end
 
-for _,d in ipairs(Tycoons:GetDescendants()) do
-	if d:IsA("TouchTransmitter")
-	and d.Parent
-	and d.Parent.Parent
-	and d.Parent.Parent.Name:find("GearGiver1") then
-		register(d.Parent)
+for _, tycoon in ipairs(Tycoons:GetChildren()) do
+	for _, folder in ipairs(tycoon:GetChildren()) do
+		if folder.Name:find("GearGiver1") then
+			for _, pad in ipairs(folder:GetChildren()) do
+				if pad:IsA("BasePart") then
+					local touch = pad:FindFirstChildOfClass("TouchTransmitter")
+					if touch then
+						register(pad)
+					end
+				end
+			end
+		end
 	end
 end
 
 Tycoons.DescendantAdded:Connect(function(d)
-	if d:IsA("TouchTransmitter")
-	and d.Parent
-	and d.Parent.Parent
-	and d.Parent.Parent.Name:find("GearGiver1") then
-		register(d.Parent)
+	if not d:IsA("TouchTransmitter") then return end
+
+	local parent = d.Parent
+	local container = parent and parent.Parent
+
+	if container and container.Name:find("GearGiver1") then
+		register(parent)
 	end
 end)
 
@@ -202,6 +210,8 @@ task.spawn(function()
 	end
 end)
 
+
+-- ChacterAdded fallback incase above method fails
 player.CharacterAdded:Connect(function(char)
 	if SpawnDeltWith then return end
 	SpawnDeltWith = true

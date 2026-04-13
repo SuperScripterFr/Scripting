@@ -196,7 +196,8 @@ task.spawn(function()
 
 			-- ⚡ fires slightly earlier than CharacterAdded
 			task.spawn(function()
-				local root = char:FindFirstChild("HumanoidRootPart") or char:WaitForChild("HumanoidRootPart")
+				local root = char:FindFirstChild("HumanoidRootPart")
+				if not root then return end
 
 				if SpawnDeltWith then return end
 				SpawnDeltWith = true

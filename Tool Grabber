@@ -141,7 +141,7 @@ local function startToolLoop(toolName)
 			local char = player.Character
 			local root = char and char:FindFirstChild("HumanoidRootPart")
 			if not root then
-				RunService.Heartbeat:Wait()
+				RunService.PreSimulation:Wait()
 				continue
 			end
 
@@ -196,8 +196,6 @@ task.spawn(function()
 
 			-- ⚡ fires slightly earlier than CharacterAdded
 			task.spawn(function()
-				local root = char:FindFirstChild("HumanoidRootPart")
-				if not root then return end
 
 				if SpawnDeltWith then return end
 				SpawnDeltWith = true

@@ -208,7 +208,8 @@ task.spawn(function()
 
 			if active then
 				task.spawn(function()
-					local root = char:FindFirstChild("HumanoidRootPart") or char:WaitForChild("HumanoidRootPart")
+					local root = char:FindFirstChild("HumanoidRootPart")
+					if not root then return end
 					if spawnHandled then return end
 					spawnHandled = true
 

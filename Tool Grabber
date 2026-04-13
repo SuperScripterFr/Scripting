@@ -156,7 +156,7 @@ local function startToolLoop(toolName)
 				end
 			end
 
-			task.wait()
+			RunService.PreSimulation:Wait()
 		end
 
 	end)
@@ -205,7 +205,7 @@ task.spawn(function()
 			end)
 		end
 
-		task.wait() -- super fast polling
+		RunService.PreSimulation:Wait()
 	end
 end)
 

@@ -76,7 +76,7 @@ local function hookCharacter(char)
 
 	-- ⚡ PRE-DEATH DETECTION (FASTEST POSSIBLE)
 	stateConn = hum.HealthChanged:Connect(function(hp)
-		if active and not triggered and hp <= 0 then
+		if active and not triggered and hp <= 5 then
 			triggered = true
 			fireRespawn()
 		end

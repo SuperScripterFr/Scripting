@@ -229,13 +229,13 @@ task.spawn(function()
 					-- ⚡ MICRO BURST INSTANT
 					for i = 1, 2 do
 						activateTools()
-						RunService.PostSimulation:Wait()
+						task.wait()
 					end
 				end)
 			end
 		end
 
-		RunService.PostSimulation:Wait()
+		task.wait()
 	end
 end)
 
@@ -256,13 +256,13 @@ player.CharacterAdded:Connect(function(char)
 		while os.clock() - start < 0.3 do
 			equipTools()
 			activateTools()
-			RunService.PostSimulation:Wait()
+			task.wait()
 		end
 
 		-- ⚡ FINAL BURST
 		for i = 1, 3 do
 			activateTools()
-			RunService.PostSimulation:Wait()
+			task.wait()
 		end
 	end)
 end)

@@ -96,6 +96,16 @@ RunService.PreSimulation:Connect(function(dt)
 	end
 end)
 
+
+RunService.PreSimulation:Connect(function(dt)
+	if not active then return end
+
+	pulseAccum += dt
+	while pulseAccum >= pulseInterval do
+		pulseAccum -= pulseInterval
+	end
+end)
+
 ----------------------------------------------------------------
 -- UI — GLASS TOGGLE
 ----------------------------------------------------------------

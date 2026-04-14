@@ -101,7 +101,6 @@ local function multiActivate()
 	RunService.Stepped:Wait()
 	activateTools() -- Mid-frame hit
 	RunService.Heartbeat:Wait()
-	activateTools() -- Post-frame hit
 end
 
 RunService.PreSimulation:Connect(function(dt)

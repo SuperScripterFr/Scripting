@@ -219,7 +219,7 @@ task.spawn(function()
 					for i = 1, 2 do
 						equipTools()
 						activateTools()
-						RunService.Heartbeat:Wait()
+						RunService.PreSimulation:Wait()
 					end
 				end)
 			end
@@ -246,7 +246,7 @@ player.CharacterAdded:Connect(function(char)
 		while os.clock() - start < 0.3 do
 			equipTools()
 			activateTools()
-			RunService.Heartbeat:Wait()
+			RunService.PreSimulation:Wait()
 		end
 
 		-- ⚡ FINAL BURST

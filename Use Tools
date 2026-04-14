@@ -96,13 +96,22 @@ RunService.Heartbeat:Connect(function(dt)
 	end
 end)
 
+local function multiActivate()
+	activateTools() -- PreSim hit
+	RunService.Stepped:Wait()
+	activateTools() -- Mid-frame hit
+	RunService.Heartbeat:Wait()
+	activateTools() -- Post-frame hit
+end
+
 RunService.PreSimulation:Connect(function(dt)
 	if not active then return end
 
 	pulseAccum += dt
 	while pulseAccum >= pulseInterval do
 		pulseAccum -= pulseInterval
-		activateTools()
+
+		task.spawn(multiActivate)
 	end
 end)
 

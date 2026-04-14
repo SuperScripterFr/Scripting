@@ -36,7 +36,7 @@ end
 ----------------------------------------------------------------
 -- CONFIG — SAFE MAX POWER
 ----------------------------------------------------------------
-local ACTIVATIONS_PER_SECOND = 35  -- Slightly stronger than before
+local ACTIVATIONS_PER_SECOND = 70  -- Slightly stronger than before
 local EQUIP_REFRESH_RATE     = 0
 
 ----------------------------------------------------------------
@@ -86,7 +86,7 @@ end
 ----------------------------------------------------------------
 -- ENGINE LOOP (STABILIZED)
 ----------------------------------------------------------------
-RunService.PreSimulation:Connect(function(dt)
+RunService.Heartbeat:Connect(function(dt)
 	if not active then return end
 
 	equipAccum += dt
@@ -96,13 +96,13 @@ RunService.PreSimulation:Connect(function(dt)
 	end
 end)
 
-
 RunService.PreSimulation:Connect(function(dt)
 	if not active then return end
 
 	pulseAccum += dt
 	while pulseAccum >= pulseInterval do
 		pulseAccum -= pulseInterval
+		activateTools()
 	end
 end)
 
@@ -208,9 +208,7 @@ task.spawn(function()
 
 			if active then
 				task.spawn(function()
-
 					if spawnHandled then return end
-
 					spawnHandled = true
 
 					-- ⚡ EQUIP IMMEDIATELY (EARLIER THAN CharacterAdded)
@@ -219,14 +217,15 @@ task.spawn(function()
 
 					-- ⚡ MICRO BURST INSTANT
 					for i = 1, 2 do
+						equipTools()
 						activateTools()
-						task.wait()
+						RunService.Heartbeat:Wait()
 					end
 				end)
 			end
 		end
 
-		task.wait()
+		RunService.PreSimulation:Wait()
 	end
 end)
 
@@ -247,13 +246,14 @@ player.CharacterAdded:Connect(function(char)
 		while os.clock() - start < 0.3 do
 			equipTools()
 			activateTools()
-			task.wait()
+			RunService.Heartbeat:Wait()
 		end
 
 		-- ⚡ FINAL BURST
 		for i = 1, 3 do
+			equipTools()
 			activateTools()
-			task.wait()
+			RunService.PreSimulation:Wait()
 		end
 	end)
 end)

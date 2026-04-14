@@ -36,7 +36,7 @@ end
 ----------------------------------------------------------------
 -- CONFIG — SAFE MAX POWER
 ----------------------------------------------------------------
-local ACTIVATIONS_PER_SECOND = 70  -- Slightly stronger than before
+local ACTIVATIONS_PER_SECOND = 65
 local EQUIP_REFRESH_RATE     = 0
 
 ----------------------------------------------------------------
@@ -96,21 +96,12 @@ RunService.Heartbeat:Connect(function(dt)
 	end
 end)
 
-local function multiActivate()
-	activateTools() -- PreSim hit
-	RunService.Stepped:Wait()
-	activateTools() -- Mid-frame hit
-	RunService.Heartbeat:Wait()
-end
-
 RunService.PreSimulation:Connect(function(dt)
 	if not active then return end
 
 	pulseAccum += dt
 	while pulseAccum >= pulseInterval do
 		pulseAccum -= pulseInterval
-
-		task.spawn(multiActivate)
 	end
 end)
 
@@ -251,7 +242,7 @@ player.CharacterAdded:Connect(function(char)
 		spawnHandled = true
 
 		-- ⚡ FORCE EQUIP WINDOW (VERY IMPORTANT)
-		while os.clock() - start < 0.3 do
+		while os.clock() - start < 0.01 do
 			equipTools()
 			activateTools()
 			RunService.PreSimulation:Wait()

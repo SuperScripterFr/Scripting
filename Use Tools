@@ -36,7 +36,7 @@ end
 ----------------------------------------------------------------
 -- CONFIG — SAFE MAX POWER
 ----------------------------------------------------------------
-local ACTIVATIONS_PER_SECOND = 65
+local ACTIVATIONS_PER_SECOND = 70  -- Slightly stronger than before
 local EQUIP_REFRESH_RATE     = 0
 
 ----------------------------------------------------------------
@@ -102,6 +102,7 @@ RunService.PreSimulation:Connect(function(dt)
 	pulseAccum += dt
 	while pulseAccum >= pulseInterval do
 		pulseAccum -= pulseInterval
+		activateTools()
 	end
 end)
 
@@ -173,6 +174,7 @@ local function setState(state)
 
 	if active then
 		equipTools()
+		activateTools()
 	else
 		unequipTools()
 	end
@@ -207,6 +209,8 @@ task.spawn(function()
 
 			if active then
 				task.spawn(function()
+					local root = char:FindFirstChild("HumanoidRootPart")
+					if not root then return end
 					if spawnHandled then return end
 					spawnHandled = true
 
@@ -216,7 +220,6 @@ task.spawn(function()
 
 					-- ⚡ MICRO BURST INSTANT
 					for i = 1, 2 do
-						equipTools()
 						activateTools()
 						RunService.PreSimulation:Wait()
 					end
@@ -236,13 +239,16 @@ player.CharacterAdded:Connect(function(char)
 
 	task.spawn(function()
 
+		local root = char:FindFirstChild("HumanoidRootPart")
+		if not root then return end
+
 		local start = os.clock()
 
 		if spawnHandled then return end
 		spawnHandled = true
 
 		-- ⚡ FORCE EQUIP WINDOW (VERY IMPORTANT)
-		while os.clock() - start < 0.01 do
+		while os.clock() - start < 0.3 do
 			equipTools()
 			activateTools()
 			RunService.PreSimulation:Wait()
@@ -250,7 +256,6 @@ player.CharacterAdded:Connect(function(char)
 
 		-- ⚡ FINAL BURST
 		for i = 1, 3 do
-			equipTools()
 			activateTools()
 			RunService.PreSimulation:Wait()
 		end

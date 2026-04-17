@@ -126,6 +126,14 @@ local function startToolLoop(toolName)
 	local base = toolToBase[toolName]
 	if not base then return end
 
+	local char = player.Character
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+
+	if not root then
+		RunService.PreSimulation:Wait()
+		continue
+	end
+
 	activeLoops[toolName] = true
 
 	task.spawn(function()
@@ -136,13 +144,6 @@ local function startToolLoop(toolName)
 			if hasTool(toolName) then
 				activeLoops[toolName] = nil
 				break
-			end
-
-			local char = player.Character
-			local root = char and char:FindFirstChild("HumanoidRootPart")
-			if not root then
-				RunService.PreSimulation:Wait()
-				continue
 			end
 
 			local pads = padsByBase[base]
@@ -157,6 +158,7 @@ local function startToolLoop(toolName)
 			end
 
 			RunService.PreSimulation:Wait()
+			RunService.Heartbeat:Wait()
 		end
 
 	end)
@@ -196,25 +198,20 @@ task.spawn(function()
 
 			-- ⚡ fires slightly earlier than CharacterAdded
 			task.spawn(function()
-
 				if SpawnDeltWith then return end
 				SpawnDeltWith = true
-
-				-- 🚀 START TOOL GRAB HERE INSTANTLY
 				instantStart()
 			end)
 		end
-
 		RunService.PreSimulation:Wait()
+		RunService.Heartbeat:Wait()
 	end
 end)
-
 
 -- ChacterAdded fallback incase above method fails
 player.CharacterAdded:Connect(function(char)
 	if SpawnDeltWith then return end
 	SpawnDeltWith = true
-
 	instantStart() -- start immediately
 end)
 

@@ -154,7 +154,6 @@ local function startToolLoop(toolName)
 			end
 
 			RunService.PreSimulation:Wait()
-			RunService.Heartbeat:Wait()
 		end
 
 	end)
@@ -200,7 +199,6 @@ task.spawn(function()
 			end)
 		end
 		RunService.PreSimulation:Wait()
-		RunService.Heartbeat:Wait()
 	end
 end)
 

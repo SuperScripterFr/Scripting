@@ -8,7 +8,7 @@ local Tycoons = workspace:WaitForChild("Tycoons")
 
 -- CONFIG
 local PAD_RANGE = 1000
-local TOUCH_BURST = 8 -- touches per frame per pad
+local TOUCH_BURST = 2 -- touches per frame per pad
 
 local allowedBases = {Stone=true, Magic=true, Storm=true, Robotic=true}
 local excludedBases = {Insanity=true, Giant=true, Dark=true, Spike=true, Web=true, Strong=true}

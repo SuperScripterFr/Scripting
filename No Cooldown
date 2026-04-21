@@ -6,11 +6,11 @@ local RunService = game:GetService("RunService")
 -- ⚡ GLOBAL COOLDOWN BREAKER (Original Power)
 --================================================
 hookfunction(wait, function()
-	return RunService.PostSimulation:Wait()
+	return RunService.Heartbeat:Wait()
 end)
 
 hookfunction(task.wait, function()
-	return RunService.PostSimulation:Wait()
+	return RunService.Heartbeat:Wait()
 end)
 
 hookfunction(delay, function(_,func)

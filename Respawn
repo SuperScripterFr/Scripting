@@ -1,36 +1,27 @@
--- ⚡ QUANTUM INSTANT RESPAWN ENGINE + UI
+-- ⚡ QUANTUM FRAME-PERFECT RESPAWN V2
 
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UIS = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 local GuideEvent = ReplicatedStorage:FindFirstChild("Guide")
 
+local active = false
+local firing = false
+
 local TOGGLE_KEY = Enum.KeyCode.R
 
-local active = false
-local lastRespawn = 0
-
-local RESPAWN_COOLDOWN = 0
-local FAILSAFE_REFIRE = 0.1
-
-local diedLock = false
-local diedConn
-local stateConn
-local charConn
-
---==================================================
--- ⚡ TRUE INSTANT RESPAWN
---==================================================
-
-local fired = false
-
+--========================================
+-- ⚡ FRAME PERFECT FIRE
+--========================================
 local function fireRespawn()
 
-	if fired then return end
-	fired = true
+	if firing then return end
+	firing = true
 
+	local attempts = 0
 	local success = false
 
 	local function attempt()
@@ -49,109 +40,78 @@ local function fireRespawn()
 		end
 	end
 
-	-- ⚡ SINGLE + MICRO FOLLOW-UP (NOT SPAM)
+	-- ⚡ FIRST SHOT (INSTANT)
 	attempt()
-	task.delay(0.02, attempt) -- one backup shot
 
-	-- ⚡ reset
-	task.delay(0.2, function()
-		fired = false
+	-- ⚡ FRAME-SYNCED FOLLOW UPS (NOT TIME BASED)
+	RunService.PreSimulation:Wait()
+	attempt()
+
+	RunService.PostSimulation:Wait()
+	attempt()
+
+	-- ⚡ FINAL SAFETY BURST
+	for i = 1,2 do
+		RunService.PreSimulation:Wait()
+		attempt()
+	end
+
+	-- reset
+	task.delay(0.15,function()
+		firing = false
 	end)
-
 end
 
---==================================================
+--========================================
 -- ⚡ CHARACTER HOOK
---==================================================
-
+--========================================
 local function hookCharacter(char)
-
-	if diedConn then diedConn:Disconnect() end
-	if stateConn then stateConn:Disconnect() end
 
 	local hum = char:WaitForChild("Humanoid",1)
 	if not hum then return end
 
 	local triggered = false
 
-	-- ⚡ PRE-DEATH DETECTION (FASTEST POSSIBLE)
-	stateConn = hum.HealthChanged:Connect(function(hp)
-		if active and not triggered and hp <= 5 then
+	-- ⚡ PRE-DEATH WINDOW (CRITICAL)
+	hum.HealthChanged:Connect(function(hp)
+		if active and not triggered and hp <= 6 then
 			triggered = true
 			fireRespawn()
 		end
 	end)
 
-	-- ⚡ FALLBACK (in case game blocks HealthChanged)
-	diedConn = hum.Died:Connect(function()
+	-- ⚡ FALLBACK
+	hum.Died:Connect(function()
 		if active and not triggered then
 			triggered = true
 			fireRespawn()
 		end
 	end)
-
 end
 
---==================================================
--- ⚡ UI (MATCHES OVERDRIVE BUTTON)
---==================================================
-
-local gui = Instance.new("ScreenGui", game.CoreGui)
-gui.ResetOnSpawn = false
-
-local btn = Instance.new("TextButton", gui)
-btn.Size = UDim2.fromOffset(120,42)
-btn.Position = UDim2.new(1,-140,1,-130) -- ABOVE Overdrive button
-btn.BackgroundColor3 = Color3.fromRGB(20,20,35)
-btn.TextColor3 = Color3.fromRGB(255,60,60)
-btn.Text = "RESPAWN"
-btn.Font = Enum.Font.GothamBold
-btn.TextScaled = true
-btn.Active = true
-btn.Draggable = true
-
-Instance.new("UICorner",btn).CornerRadius = UDim.new(0,10)
-
-local stroke = Instance.new("UIStroke",btn)
-stroke.Color = Color3.fromRGB(255,60,60)
-
---==================================================
--- ⚡ TOGGLE SYSTEM
---==================================================
-
+--========================================
+-- ⚡ TOGGLE
+--========================================
 local function setState(state)
-
 	active = state
 
-	btn.Text = active and "RESPAWN: ON" or "RESPAWN: OFF"
-
-	if charConn then charConn:Disconnect() end
-	if diedConn then diedConn:Disconnect() end
-	if stateConn then stateConn:Disconnect() end
-
 	if active then
-		print("⚡ Quantum Respawn ON")
+		print("⚡ Respawn ON")
 
-		charConn = player.CharacterAdded:Connect(hookCharacter)
+		player.CharacterAdded:Connect(hookCharacter)
 
 		if player.Character then
 			hookCharacter(player.Character)
 		end
 	else
-		print("⚡ Quantum Respawn OFF")
+		print("⚡ Respawn OFF")
 	end
-
 end
 
-btn.MouseButton1Click:Connect(function()
-	setState(not active)
-end)
-
--- KEYBIND (still works)
-UIS.InputBegan:Connect(function(i,gp)
-	if not gp and i.KeyCode == TOGGLE_KEY then
+UIS.InputBegan:Connect(function(i,g)
+	if not g and i.KeyCode == TOGGLE_KEY then
 		setState(not active)
 	end
 end)
 
-print("⚡ Quantum Respawn Ready (UI Loaded)")
+print("⚡ Frame Perfect Respawn Loaded")

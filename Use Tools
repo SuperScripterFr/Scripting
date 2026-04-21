@@ -1,24 +1,39 @@
-----------------------------------------------------------------
--- SERVICES
-----------------------------------------------------------------
-local Players      = game:GetService("Players")
-local RunService   = game:GetService("RunService")
-local UIS          = game:GetService("UserInputService")
+-- ⚡ COBALT COMBAT CORE (USE TOOLS + AURA + UI)
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
+local UIS = game:GetService("UserInputService")
 
-local player = Players.LocalPlayer
+local lp = Players.LocalPlayer
 
-----------------------------------------------------------------
--- THEME (MATCHES RTX HUB)
-----------------------------------------------------------------
+--========================================
+-- ⚙️ CONFIG
+--========================================
+local RATE = 75
+local INTERVAL = 1 / RATE
+
+local AURA_SIZE = Vector3.new(30,30,30)
+local TOUCH_BURST = 2
+
+local TOGGLE_KEY = Enum.KeyCode.Q
+
+local enabled = false
+local lastFire = 0
+
+local auraParams = OverlapParams.new()
+auraParams.FilterType = Enum.RaycastFilterType.Include
+
+--========================================
+-- 🎨 THEME (COBALT GLASS)
+--========================================
 local Theme = {
-	Accent = Color3.fromRGB(0,0,255),
-	Glass  = Color3.fromRGB(0,0,50),
-	Text   = Color3.fromRGB(255,255,255),
-	Stroke = Color3.fromRGB(0,0,255)
+	Accent = Color3.fromRGB(40,120,255),
+	Glass  = Color3.fromRGB(10,15,35),
+	Text   = Color3.fromRGB(200,220,255)
 }
 
-local ANIM = TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+local ANIM = TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
 
 local function round(i,r)
 	local c = Instance.new("UICorner")
@@ -26,235 +41,209 @@ local function round(i,r)
 	c.Parent = i
 end
 
-local function stroke(i, thick)
+local function stroke(i, t)
 	local s = Instance.new("UIStroke")
-	s.Color = Theme.Stroke
-	s.Thickness = thick or 1
+	s.Color = Theme.Accent
+	s.Thickness = t or 1.5
+	s.Transparency = 0.25
 	s.Parent = i
 end
 
-----------------------------------------------------------------
--- CONFIG — SAFE MAX POWER
-----------------------------------------------------------------
-local ACTIVATIONS_PER_SECOND = 65  -- Slightly stronger than before
-local EQUIP_REFRESH_RATE     = 0
+--========================================
+-- 🎯 TARGET BUILDER
+--========================================
+local function getTargets()
 
-----------------------------------------------------------------
--- STATE
-----------------------------------------------------------------
-local active          = false
-local pulseAccum     = 0
-local equipAccum     = 0
-local pulseInterval  = 1 / ACTIVATIONS_PER_SECOND
+	local char = lp.Character
+	if not char then return {} end
 
-----------------------------------------------------------------
--- TOOL LOGIC (HEADLESS)
-----------------------------------------------------------------
-local function equipTools()
-	local char, bp = player.Character, player.Backpack
-	if not char or not bp then return end
+	local root = char:FindFirstChild("HumanoidRootPart")
+	if not root then return {} end
 
-	for _, t in ipairs(bp:GetChildren()) do
-		if t:IsA("Tool") then
-			t.Parent = char
-		end
-	end
-end
+	local t = {}
 
-local function unequipTools()
-	local char, bp = player.Character, player.Backpack
-	if not char or not bp then return end
-
-	for _, t in ipairs(char:GetChildren()) do
-		if t:IsA("Tool") then
-			t.Parent = bp
-		end
-	end
-end
-
-local function activateTools()
-	local char = player.Character
-	if not char then return end
-
-	for _, t in ipairs(char:GetChildren()) do
-		if t:IsA("Tool") then
-			pcall(t.Activate, t)
-		end
-	end
-end
-
-----------------------------------------------------------------
--- ENGINE LOOP (STABILIZED)
-----------------------------------------------------------------
-RunService.Heartbeat:Connect(function(dt)
-	if not active then return end
-
-	equipAccum += dt
-	if equipAccum >= EQUIP_REFRESH_RATE then
-		equipAccum = 0
-		equipTools()
-	end
-end)
-
-local fireNext = 0
-
-RunService.PreSimulation:Connect(function()
-	if not active then return end
-
-	local now = os.clock()
-
-	if now >= fireNext then
-		fireNext = now + pulseInterval
-		activateTools()
-		RunService.PostSimulation:Wait()
-		activateTools()
-	end
-end)
-
-----------------------------------------------------------------
--- UI — GLASS TOGGLE
-----------------------------------------------------------------
-local gui = Instance.new("ScreenGui")
-gui.Name = "RTXUseTools"
-gui.ResetOnSpawn = false
-gui.ZIndexBehavior = Enum.ZIndexBehavior.Global
-gui.Parent = game:GetService("CoreGui")
-
-local toggle = Instance.new("TextButton", gui)
-toggle.Size = UDim2.fromOffset(180, 64)
-toggle.Position = UDim2.fromScale(0.98, 0.55)
-toggle.AnchorPoint = Vector2.new(1,0.5)
-toggle.Text = "USE TOOLS: OFF"
-toggle.Font = Enum.Font.GothamBold
-toggle.TextSize = 15
-toggle.TextColor3 = Theme.Text
-toggle.BackgroundColor3 = Theme.Glass
-toggle.BackgroundTransparency = 0.08
-toggle.AutoButtonColor = false
-toggle.Active = true
-toggle.Draggable = true
-toggle.ZIndex = 9999
-
-round(toggle,16)
-stroke(toggle,2)
-
-local glow = Instance.new("UIStroke", toggle)
-glow.Color = Theme.Accent
-glow.Thickness = 2
-glow.Transparency = 0.6
-
-----------------------------------------------------------------
--- UI FEEDBACK
-----------------------------------------------------------------
-toggle.MouseEnter:Connect(function()
-	TweenService:Create(toggle, ANIM, {
-		Size = UDim2.fromOffset(190, 70)
-	}):Play()
-
-	TweenService:Create(glow, ANIM, {
-		Transparency = 0.25
-	}):Play()
-end)
-
-toggle.MouseLeave:Connect(function()
-	TweenService:Create(toggle, ANIM, {
-		Size = UDim2.fromOffset(180, 64)
-	}):Play()
-
-	TweenService:Create(glow, ANIM, {
-		Transparency = 0.6
-	}):Play()
-end)
-
-----------------------------------------------------------------
--- TOGGLE LOGIC
-----------------------------------------------------------------
-local function updateText()
-	toggle.Text = active and "USE TOOLS: ON" or "USE TOOLS: OFF"
-end
-
-local function setState(state)
-	active = state
-	updateText()
-
-	if active then
-		equipTools()
-	else
-		unequipTools()
-	end
-end
-
-toggle.MouseButton1Click:Connect(function()
-	setState(not active)
-end)
-
-UIS.InputBegan:Connect(function(i,g)
-	if not g and i.KeyCode == Enum.KeyCode.Q then
-		setState(not active)
-	end
-end)
-
-----------------------------------------------------------------
--- Pre-Respawn
-----------------------------------------------------------------
-local spawnHandled = false
-
-task.spawn(function()
-
-	local lastChar = nil
-
-	while true do
-		local char = player.Character
-
-		if char and char ~= lastChar then
-			lastChar = char
-			spawnHandled = false
-
-			if active then
-				task.spawn(function()
-					if spawnHandled then return end
-					spawnHandled = true
-				
-					-- ⚡ EQUIP IMMEDIATELY (EARLIER THAN CharacterAdded)
-					equipTools()
-					activateTools()
-
-					-- ⚡ MICRO BURST INSTANT
-					for i = 1, 2 do
-						activateTools()
-					end
-				end)
+	for _,p in ipairs(Players:GetPlayers()) do
+		if p ~= lp and p.Character then
+			local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+			if hrp and (hrp.Position - root.Position).Magnitude <= 40 then
+				table.insert(t, p.Character)
 			end
 		end
-		RunService.PreSimulation:Wait()
 	end
+
+	return t
+end
+
+--========================================
+-- ⚡ TOOL EXECUTION
+--========================================
+local function processTool(tool, targets)
+
+	if tool.Parent ~= lp.Character then
+		tool.Parent = lp.Character
+	end
+
+	pcall(tool.Activate, tool)
+
+	local touch = tool:FindFirstChildWhichIsA("TouchTransmitter", true)
+	touch = touch and touch.Parent
+
+	local remote = tool:FindFirstChild("FightEvent")
+
+	if remote then
+		pcall(function()
+			remote:FireServer()
+		end)
+	end
+
+	if touch and #targets > 0 then
+
+		auraParams.FilterDescendantsInstances = targets
+
+		local parts = workspace:GetPartBoundsInBox(
+			touch.CFrame,
+			touch.Size + AURA_SIZE,
+			auraParams
+		)
+
+		for _,p in ipairs(parts) do
+			for i = 1, TOUCH_BURST do
+				pcall(firetouchinterest, touch, p, 0)
+				pcall(firetouchinterest, touch, p, 1)
+			end
+		end
+	end
+end
+
+--========================================
+-- ⚡ ENGINE
+--========================================
+RunService.PreSimulation:Connect(function()
+
+	if not enabled then return end
+
+	local now = os.clock()
+	if now - lastFire < INTERVAL then return end
+	lastFire = now
+
+	local char = lp.Character
+	if not char then return end
+
+	local targets = getTargets()
+	if #targets == 0 then return end
+
+	for _,tool in ipairs(char:GetChildren()) do
+		if tool:IsA("Tool") then
+			processTool(tool, targets)
+		end
+	end
+
+	RunService.PostSimulation:Wait()
+
+	for _,tool in ipairs(char:GetChildren()) do
+		if tool:IsA("Tool") then
+			processTool(tool, targets)
+		end
+	end
+
 end)
 
-----------------------------------------------------------------
--- RESPAWN SAFETY
-----------------------------------------------------------------
-player.CharacterAdded:Connect(function(char)
-	if not active then return end
+--========================================
+-- ⚡ SPAWN BURST
+--========================================
+lp.CharacterAdded:Connect(function(char)
 
 	task.spawn(function()
 
 		local start = os.clock()
 
-		if spawnHandled then return end
-		spawnHandled = true
+		while os.clock() - start < 0.25 do
 
-		-- ⚡ FORCE EQUIP WINDOW (VERY IMPORTANT)
-		while os.clock() - start < 0.3 do
-			equipTools()
-			activateTools()
+			if not enabled then break end
+
+			local targets = getTargets()
+
+			for _,tool in ipairs(char:GetChildren()) do
+				if tool:IsA("Tool") then
+					processTool(tool, targets)
+				end
+			end
+
+			RunService.PreSimulation:Wait()
 		end
 
-		-- ⚡ FINAL BURST
-		for i = 1, 3 do
-			activateTools()
-		end
 	end)
 end)
 
-updateText()
-print("[RTX] Use Tools initialized")
+--========================================
+-- 🧊 UI TOGGLE
+--========================================
+local gui = Instance.new("ScreenGui", game.CoreGui)
+gui.Name = "CobaltCombatUI"
+gui.ResetOnSpawn = false
+
+local btn = Instance.new("TextButton", gui)
+btn.Size = UDim2.fromOffset(180, 60)
+btn.Position = UDim2.fromScale(0.98, 0.6)
+btn.AnchorPoint = Vector2.new(1,0.5)
+btn.Text = "COMBAT: OFF"
+btn.Font = Enum.Font.GothamBold
+btn.TextSize = 15
+btn.TextColor3 = Theme.Text
+btn.BackgroundColor3 = Theme.Glass
+btn.BackgroundTransparency = 0.1
+btn.Active = true
+btn.Draggable = true
+btn.AutoButtonColor = false
+
+round(btn,16)
+stroke(btn,2)
+
+local glow = Instance.new("UIStroke", btn)
+glow.Color = Theme.Accent
+glow.Thickness = 2
+glow.Transparency = 0.6
+
+--========================================
+-- 🎛️ STATE CONTROL
+--========================================
+local function updateUI()
+	btn.Text = enabled and "COMBAT: ON" or "COMBAT: OFF"
+
+	TweenService:Create(glow, ANIM, {
+		Transparency = enabled and 0.2 or 0.6
+	}):Play()
+end
+
+local function setState(state)
+	enabled = state
+	updateUI()
+end
+
+btn.MouseButton1Click:Connect(function()
+	setState(not enabled)
+end)
+
+UIS.InputBegan:Connect(function(i,g)
+	if not g and i.KeyCode == TOGGLE_KEY then
+		setState(not enabled)
+	end
+end)
+
+--========================================
+-- ✨ HOVER EFFECT
+--========================================
+btn.MouseEnter:Connect(function()
+	TweenService:Create(btn, ANIM, {
+		Size = UDim2.fromOffset(190, 66)
+	}):Play()
+end)
+
+btn.MouseLeave:Connect(function()
+	TweenService:Create(btn, ANIM, {
+		Size = UDim2.fromOffset(180, 60)
+	}):Play()
+end)
+
+updateUI()
+print("⚡ Cobalt Combat Core + UI Loaded")

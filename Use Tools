@@ -84,92 +84,38 @@ local function activateTools()
 end
 
 ----------------------------------------------------------------
--- ⚡ HARD OPTIMIZED CORE
+-- ⚡ FRAME-SYNCED ENGINE (OPTIMIZED)
 ----------------------------------------------------------------
 
-local RunService = game:GetService("RunService")
-local player = game.Players.LocalPlayer
+local fireClock = 0
+local equipClock = 0
 
-local active = false
+RunService.PreSimulation:Connect(function(dt)
+	if not active then return end
 
--- 🔒 LOCKED TOOL CACHE (NO TABLE REBUILD PER FRAME)
-local tools = {}
+	local now = os.clock()
 
-local function rebuildCache()
-	table.clear(tools)
-
-	local char = player.Character
-	if not char then return end
-
-	for _, t in ipairs(char:GetChildren()) do
-		if t:IsA("Tool") then
-			tools[#tools+1] = t
-		end
+	-- ⚡ EQUIP PRIORITY (runs first in frame)
+	if now >= equipClock then
+		equipClock = now + 0.05
+		equipTools()
 	end
-end
 
--- ⚡ DIRECT ACTIVATE (NO THREAD SPAWN)
-local function fireAll()
-	for i = 1, #tools do
-		local t = tools[i]
-		pcall(t.Activate, t)
+	-- ⚡ ACTIVATION WINDOW (MULTI-PHASE BURST)
+	if now >= fireClock then
+		fireClock = now + pulseInterval
+
+		-- PHASE 1
+		activateTools()
+
+		-- PHASE 2 (same frame, deeper pipeline)
+		RunService.PostSimulation:Wait()
+		activateTools()
+
+		-- PHASE 3 (micro push)
+		task.defer(activateTools)
 	end
-end
-
-----------------------------------------------------------------
--- ⚡ FRAME PIPELINE (CRITICAL)
-----------------------------------------------------------------
-
-RunService.PreSimulation:Connect(function()
-	if not active then return end
-	fireAll()
 end)
-
-RunService.Stepped:Connect(function()
-	if not active then return end
-	fireAll()
-end)
-
-RunService.Heartbeat:Connect(function()
-	if not active then return end
-	fireAll()
-end)
-
-RunService.PostSimulation:Connect(function()
-	if not active then return end
-	fireAll()
-end)
-
-----------------------------------------------------------------
--- ⚡ TOOL TRACKING (EVENT-DRIVEN)
-----------------------------------------------------------------
-
-local function hookCharacter(char)
-	rebuildCache()
-
-	char.ChildAdded:Connect(function(c)
-		if c:IsA("Tool") then
-			tools[#tools+1] = c
-		end
-	end)
-
-	char.ChildRemoved:Connect(function(c)
-		if c:IsA("Tool") then
-			for i = #tools, 1, -1 do
-				if tools[i] == c then
-					table.remove(tools, i)
-					break
-				end
-			end
-		end
-	end)
-end
-
-if player.Character then
-	hookCharacter(player.Character)
-end
-
-player.CharacterAdded:Connect(hookCharacter)
 
 ----------------------------------------------------------------
 -- UI — GLASS TOGGLE

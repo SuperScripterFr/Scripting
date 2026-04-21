@@ -11,18 +11,6 @@ local RunService = game:GetService("RunService")
 local lp = Players.LocalPlayer
 local PlayerGui = lp:WaitForChild("PlayerGui")
 
--- Cleanup old instance
-local connections = getgenv().configs and getgenv().configs.connections
-if connections then
-	local Disable = getgenv().configs.Disable
-	for _, c in ipairs(connections) do
-		c:Disconnect()
-	end
-	Disable:Fire()
-	Disable:Destroy()
-	table.clear(getgenv().configs)
-end
-
 -- Global state
 local Disable = Instance.new("BindableEvent")
 getgenv().configs = {

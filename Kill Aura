@@ -1,4 +1,4 @@
--- ⚡ RTX TOUCH HELPER AURA (SYNCED + LIGHTWEIGHT)
+-- ⚡ FRAME SYNCED MULTI TARGET KILL AURA
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -7,68 +7,87 @@ local LocalPlayer = Players.LocalPlayer
 
 -- CONFIG
 local RANGE = 30
+local AURA_SIZE = Vector3.new(30,30,30)
+
 local TOUCH_BURST = 5
 
--- cache
-local targets = {}
+-- STATE
+local targetCache = {}
+local auraParams = OverlapParams.new()
+auraParams.FilterType = Enum.RaycastFilterType.Include
 
---==================================================
--- TARGET BUILDER (HRP ONLY)
---==================================================
-local function updateTargets()
-	table.clear(targets)
+-- helpers
+local function getHRP(plr)
+	local c = plr.Character
+	return c and c:FindFirstChild("HumanoidRootPart")
+end
 
-	local myChar = LocalPlayer.Character
-	local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
-	if not myRoot then return end
+local function buildTargets()
 
-	for _, p in ipairs(Players:GetPlayers()) do
+	local myRoot = getHRP(LocalPlayer)
+	if not myRoot then return {} end
+
+	local t = {}
+
+	for _,p in ipairs(Players:GetPlayers()) do
 		if p ~= LocalPlayer then
-			local char = p.Character
-			local hrp = char and char:FindFirstChild("HumanoidRootPart")
-
-			if hrp then
-				local dist = (hrp.Position - myRoot.Position).Magnitude
-				if dist <= RANGE then
-					targets[#targets+1] = hrp
-				end
+			local r = getHRP(p)
+			if r and (r.Position - myRoot.Position).Magnitude <= RANGE then
+				table.insert(t,p.Character)
 			end
 		end
 	end
+
+	return t
 end
 
---==================================================
--- TOUCH CORE
---==================================================
-local function tap(a, b)
-	for i = 1, TOUCH_BURST do
-		firetouchinterest(a, b, 0)
-		firetouchinterest(a, b, 1)
+local function tap(part,enemyPart)
+	for i=1,TOUCH_BURST do
+		pcall(firetouchinterest,part,enemyPart,0)
+		pcall(firetouchinterest,part,enemyPart,1)
 	end
 end
 
---==================================================
--- FRAME-SYNCED LOOP
---==================================================
-RunService.PreSimulation:Connect(function()
+RunService.Heartbeat:Connect(function()
+
 	local char = LocalPlayer.Character
 	if not char then return end
 
-	updateTargets()
-	if #targets == 0 then return end
+	targetCache = buildTargets()
+	if #targetCache == 0 then return end
 
-	for _, tool in ipairs(char:GetChildren()) do
+	auraParams.FilterDescendantsInstances = targetCache
+
+	local now = os.clock()
+
+	for _,tool in ipairs(char:GetChildren()) do
 		if tool:IsA("Tool") then
 
-			local part = tool:FindFirstChildWhichIsA("BasePart")
-			if not part then continue end
+			if tool.Parent ~= char then
+				tool.Parent = char
+			end
 
-			for _, enemyHRP in ipairs(targets) do
-				tap(part, enemyHRP)
+			local touchPart = tool:FindFirstChildWhichIsA("TouchTransmitter",true)
+			touchPart = touchPart and touchPart.Parent
+
+			-- physical aura strike
+			if touchPart then
+
+				local parts = workspace:GetPartBoundsInBox(
+					touchPart.CFrame,
+					touchPart.Size + AURA_SIZE,
+					auraParams
+				)
+
+				for _,enemyPart in ipairs(parts) do
+					tap(touchPart,enemyPart)
+				end
+
 			end
 
 		end
 	end
+
 end)
 
-print("⚡ RTX Touch Helper Aura Loaded")
+print("⚡ Multi Target Aura Loaded")

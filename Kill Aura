@@ -9,8 +9,8 @@ local LocalPlayer = Players.LocalPlayer
 local RANGE = 35
 local AURA_SIZE = Vector3.new(35,35,35)
 
-local REMOTE_RATE = 0.1
-local TOUCH_BURST = 2
+local REMOTE_RATE = 0.05
+local TOUCH_BURST = 5
 
 -- STATE
 local lastRemote = 0

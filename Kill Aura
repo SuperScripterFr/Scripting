@@ -6,10 +6,10 @@ local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
 -- CONFIG
-local RANGE = 35
-local AURA_SIZE = Vector3.new(35,35,35)
+local RANGE = 30
+local AURA_SIZE = Vector3.new(30,30,30)
 
-local REMOTE_RATE = 0.1
+local REMOTE_RATE = 0.05
 local TOUCH_BURST = 5
 
 -- STATE

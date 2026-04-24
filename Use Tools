@@ -86,9 +86,11 @@ local function activateTools()
 				activeThreads += 1
 
 				task.spawn(function()
+					pcall(t.Activate, t)
 					activeThreads -= 1
 				end)
 			end
+			pcall(t.Activate, t)
 		end
 	end
 end

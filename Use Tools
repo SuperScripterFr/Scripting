@@ -36,7 +36,7 @@ end
 ----------------------------------------------------------------
 -- CONFIG — SAFE MAX POWER
 ----------------------------------------------------------------
-local ACTIVATIONS_PER_SECOND = 55  -- Slightly stronger than before
+local ACTIVATIONS_PER_SECOND = 65
 local EQUIP_REFRESH_RATE     = 0
 
 ----------------------------------------------------------------
@@ -109,7 +109,7 @@ RunService.PreSimulation:Connect(function(dt)
 
 	-- ⚡ EQUIP PRIORITY (runs first in frame)
 	if now >= equipClock then
-		equipClock = now + 0.05
+		equipClock = now
 		equipTools()
 	end
 

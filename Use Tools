@@ -95,15 +95,6 @@ local function activateTools()
 	end
 end
 
-local function stopAnimations(char)
-	local hum = char and char:FindFirstChildOfClass("Humanoid")
-	if not hum then return end
-
-	for _, track in ipairs(hum:GetPlayingAnimationTracks()) do
-		track:Stop(0)
-	end
-end
-
 ----------------------------------------------------------------
 -- ⚡ FRAME-SYNCED ENGINE (OPTIMIZED)
 ----------------------------------------------------------------
@@ -135,31 +126,6 @@ RunService.PreSimulation:Connect(function(dt)
 
 		-- PHASE 3 (micro push)
 		task.defer(activateTools)
-	end
-end)
-
-RunService.PreSimulation:Connect(function()
-	if active then
-		speedAnimations(player.Character)
-	end
-end)
-
-----------------------------------------------------------------
--- Animation Supression
-----------------------------------------------------------------
-RunService.RenderStepped:Connect(function()
-	if not active then return end
-
-	local char = player.Character
-	if not char then return end
-
-	local hum = char:FindFirstChildOfClass("Humanoid")
-	if not hum then return end
-
-	for _, track in ipairs(hum:GetPlayingAnimationTracks()) do
-		if track.Priority == Enum.AnimationPriority.Action then
-			track:AdjustSpeed(10) -- nearly frozen
-		end
 	end
 end)
 

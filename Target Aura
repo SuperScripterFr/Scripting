@@ -11,6 +11,15 @@ local RunService = game:GetService("RunService")
 local lp = Players.LocalPlayer
 local PlayerGui = lp:WaitForChild("PlayerGui")
 
+-- Global state
+local Disable = Instance.new("BindableEvent")
+getgenv().configs = {
+	connections = {},
+	Disable = Disable,
+	Size = auraSize,
+	TargetList = {},
+}
+
 local Run = true
 local Ignorelist = OverlapParams.new()
 Ignorelist.FilterType = Enum.RaycastFilterType.Include
@@ -69,6 +78,13 @@ local function ApplyDamageInstant(tool, touch)
 		end
 	end
 end
+
+-- Disable hook
+table.insert(getgenv().configs.connections,
+	Disable.Event:Connect(function()
+		Run = false
+	end)
+)
 
 -- ============================
 -- 🖤💙 Black & Blue UI
@@ -212,16 +228,21 @@ local function getTargets()
 	return t
 end
 
-local function hitTarget(tool, touch, char)
-	local count = 0
+local PRIORITY_PARTS = {
+	"HumanoidRootPart",
+	"Head",
+	"UpperTorso",
+	"LowerTorso"
+}
 
-	for _, part in ipairs(char:GetChildren()) do
-		if part:IsA("BasePart") then
+local function hitTarget(tool, touch, char)
+
+	for i = 1, #PRIORITY_PARTS do
+		local part = char:FindFirstChild(PRIORITY_PARTS[i])
+
+		if part and part:IsA("BasePart") then
 			firetouchinterest(touch, part, 0)
 			firetouchinterest(touch, part, 1)
-
-			count += 1
-			if count >= MAX_PARTS_PER_TARGET then break end
 		end
 	end
 end

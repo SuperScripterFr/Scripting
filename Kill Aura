@@ -9,7 +9,7 @@ local LocalPlayer = Players.LocalPlayer
 local RANGE = 30
 local AURA_SIZE = Vector3.new(30,30,30)
 
-local TOUCH_BURST = 5
+local TOUCH_BURST = 2
 
 -- STATE
 local targetCache = {}

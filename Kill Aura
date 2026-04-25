@@ -27,12 +27,17 @@ end
 
 local function buildTargets()
 
+	local myRoot = getHRP(LocalPlayer)
+	if not myRoot then return {} end
+
 	local t = {}
 
-	for name in pairs(bringTargets) do
-		local p = Players:FindFirstChild(name)
-		if p and p.Character then
-			table.insert(t, p.Character)
+	for _,p in ipairs(Players:GetPlayers()) do
+		if p ~= LocalPlayer then
+			local r = getHRP(p)
+			if r and (r.Position - myRoot.Position).Magnitude <= RANGE then
+				table.insert(t,p.Character)
+			end
 		end
 	end
 
@@ -46,17 +51,11 @@ end
 
 RunService.PreSimulation:Connect(function()
 
-	local STABILIZE_DELAY = true
-
 	local char = LocalPlayer.Character
 	if not char then return end
 
 	targetCache = buildTargets()
 	if #targetCache == 0 then return end
-	-- after building targets
-	if STABILIZE_DELAY then
-		RunService.PostSimulation:Wait()
-	end
 
 	auraParams.FilterDescendantsInstances = targetCache
 
@@ -83,17 +82,15 @@ RunService.PreSimulation:Connect(function()
 					auraParams
 				)
 
-				local MAX_TOUCHES_PER_TARGET = 3
-				
-				local count = 0
 				for _,enemyPart in ipairs(parts) do
-					tap(touchPart, enemyPart)
-					count += 1
-					if count >= MAX_TOUCHES_PER_TARGET then break end
+					tap(touchPart,enemyPart)
 				end
+
 			end
+
 		end
 	end
+
 end)
 
 local BURST_FRAMES = 20
@@ -107,4 +104,4 @@ player.CharacterAdded:Connect(function()
 	end)
 end)
 
-print("⚡ Multi Target Aura Loaded")
+print("⚡ Kill Aura Loaded")

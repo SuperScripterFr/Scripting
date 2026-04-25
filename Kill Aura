@@ -95,7 +95,7 @@ end)
 
 local BURST_FRAMES = 20
 
-player.CharacterAdded:Connect(function()
+LocalPlayer.CharacterAdded:Connect(function()
 	task.spawn(function()
 		for i = 1, BURST_FRAMES do
 			RunService.PreSimulation:Wait()

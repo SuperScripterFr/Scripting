@@ -49,7 +49,7 @@ local function tap(part, enemyPart)
 	pcall(firetouchinterest, part, enemyPart, 1)
 end
 
-RunService.Heartbeat:Connect(function()
+RunService.PreSimulation:Connect(function()
 
 	local char = LocalPlayer.Character
 	if not char then return end

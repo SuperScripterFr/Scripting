@@ -36,7 +36,7 @@ end
 ----------------------------------------------------------------
 -- CONFIG — SAFE MAX POWER
 ----------------------------------------------------------------
-local ACTIVATIONS_PER_SECOND = 25
+local ACTIVATIONS_PER_SECOND = 35
 local EQUIP_REFRESH_RATE     = 0
 
 ----------------------------------------------------------------
@@ -90,7 +90,6 @@ local function activateTools()
 					activeThreads -= 1
 				end)
 			end
-			pcall(t.Activate, t)
 		end
 	end
 end

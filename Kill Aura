@@ -11,6 +11,9 @@ local AURA_SIZE = Vector3.new(30,30,30)
 
 local TOUCH_BURST = 2
 
+local lastAura = 0
+local AURA_RATE = 1/30 -- 30Hz max
+
 -- STATE
 local targetCache = {}
 local auraParams = OverlapParams.new()
@@ -41,11 +44,9 @@ local function buildTargets()
 	return t
 end
 
-local function tap(part,enemyPart)
-	for i=1,TOUCH_BURST do
-		pcall(firetouchinterest,part,enemyPart,0)
-		pcall(firetouchinterest,part,enemyPart,1)
-	end
+local function tap(part, enemyPart)
+	pcall(firetouchinterest, part, enemyPart, 0)
+	pcall(firetouchinterest, part, enemyPart, 1)
 end
 
 RunService.Heartbeat:Connect(function()
@@ -59,6 +60,8 @@ RunService.Heartbeat:Connect(function()
 	auraParams.FilterDescendantsInstances = targetCache
 
 	local now = os.clock()
+	if now - lastAura < AURA_RATE then return end
+	lastAura = now
 
 	for _,tool in ipairs(char:GetChildren()) do
 		if tool:IsA("Tool") then

@@ -5,20 +5,17 @@ local RunService = game:GetService("RunService")
 --================================================
 -- ⚡ GLOBAL COOLDOWN BREAKER (Original Power)
 --================================================
+local function fastYield()
+	RunService.PreSimulation:Wait()
+	RunService.Heartbeat:Wait()
+end
+
 hookfunction(wait, function()
-	return RunService.Heartbeat:Wait()
+	fastYield()
 end)
 
 hookfunction(task.wait, function()
-	return RunService.Heartbeat:Wait()
-end)
-
-hookfunction(delay, function(_,func)
-	task.spawn(func)
-end)
-
-hookfunction(spawn, function(func)
-	task.spawn(func)
+	fastYield()
 end)
 
 print("⚡ No Cooldown Running")

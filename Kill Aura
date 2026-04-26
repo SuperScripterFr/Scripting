@@ -93,7 +93,7 @@ RunService.PreSimulation:Connect(function()
 
 end)
 
-local BURST_FRAMES = 20
+local BURST_FRAMES = 10
 
 LocalPlayer.CharacterAdded:Connect(function()
 	task.spawn(function()

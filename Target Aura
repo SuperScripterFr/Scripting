@@ -208,9 +208,9 @@ Players.PlayerRemoving:Connect(UpdatePlayers)
 -- ============================
 
 local lastFire = 0
-local FIRE_RATE = 1/35 -- stable sweet spot
+local FIRE_RATE = 1/15 -- stable sweet spot
 
-local MAX_PARTS_PER_TARGET = 4
+local MAX_PARTS_PER_TARGET = 1
 
 local function getTargets()
 	local t = {}
@@ -230,9 +230,6 @@ end
 
 local PRIORITY_PARTS = {
 	"HumanoidRootPart",
-	"Head",
-	"UpperTorso",
-	"LowerTorso"
 }
 
 local function hitTarget(tool, touch, char)

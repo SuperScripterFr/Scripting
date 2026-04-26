@@ -208,7 +208,7 @@ Players.PlayerRemoving:Connect(UpdatePlayers)
 -- ============================
 
 local lastFire = 0
-local FIRE_RATE = 1/15 -- stable sweet spot
+local FIRE_RATE = 1/30
 
 local MAX_PARTS_PER_TARGET = 1
 

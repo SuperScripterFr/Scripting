@@ -1,4 +1,4 @@
--- ⚡ FRAME SYNCED MULTI TARGET KILL AURA
+-- ⚡ SINGLE TARGET FOCUSED AURA
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -7,101 +7,82 @@ local LocalPlayer = Players.LocalPlayer
 
 -- CONFIG
 local RANGE = 30
-local AURA_SIZE = Vector3.new(30,30,30)
-
 local TOUCH_BURST = 2
+local AURA_RATE = 1/40 -- slightly faster now that it's lighter
 
 local lastAura = 0
-local AURA_RATE = 1/30
 
--- STATE
-local targetCache = {}
-local auraParams = OverlapParams.new()
-auraParams.FilterType = Enum.RaycastFilterType.Include
-
--- helpers
+-- HELPERS
 local function getHRP(plr)
 	local c = plr.Character
 	return c and c:FindFirstChild("HumanoidRootPart")
 end
 
-local function buildTargets()
-
+-- ✅ FIND BEST TARGET (nearest)
+local function getBestTarget()
 	local myRoot = getHRP(LocalPlayer)
-	if not myRoot then return {} end
+	if not myRoot then return end
 
-	local t = {}
+	local bestTarget = nil
+	local bestDist = RANGE
 
-	for _,p in ipairs(Players:GetPlayers()) do
+	for _, p in ipairs(Players:GetPlayers()) do
 		if p ~= LocalPlayer then
 			local r = getHRP(p)
-			if r and (r.Position - myRoot.Position).Magnitude <= RANGE then
-				table.insert(t,p.Character)
+			if r then
+				local dist = (r.Position - myRoot.Position).Magnitude
+				if dist < bestDist then
+					bestDist = dist
+					bestTarget = r
+				end
 			end
 		end
 	end
 
-	return t
+	return bestTarget
 end
 
-local function tap(part, enemyPart)
-	pcall(firetouchinterest, part, enemyPart, 0)
-	pcall(firetouchinterest, part, enemyPart, 1)
+-- ✅ CLEAN TAP (no redundant spam)
+local function tap(toolPart, enemyPart)
+	for i = 1, TOUCH_BURST do
+		firetouchinterest(toolPart, enemyPart, 0)
+		firetouchinterest(toolPart, enemyPart, 1)
+	end
 end
 
+-- ⚡ CORE LOOP
 RunService.PreSimulation:Connect(function()
 
 	local char = LocalPlayer.Character
 	if not char then return end
 
-	targetCache = buildTargets()
-	if #targetCache == 0 then return end
-
-	auraParams.FilterDescendantsInstances = targetCache
-
 	local now = os.clock()
 	if now - lastAura < AURA_RATE then return end
 	lastAura = now
 
-	for _,tool in ipairs(char:GetChildren()) do
+	local targetHRP = getBestTarget()
+	if not targetHRP then return end
+
+	-- ⚡ stabilization (VERY IMPORTANT)
+	RunService.PostSimulation:Wait()
+
+	-- ✅ ALL TOOLS → ONE TARGET HRP
+	for _, tool in ipairs(char:GetChildren()) do
 		if tool:IsA("Tool") then
 
 			if tool.Parent ~= char then
 				tool.Parent = char
 			end
 
-			local touchPart = tool:FindFirstChildWhichIsA("TouchTransmitter",true)
-			touchPart = touchPart and touchPart.Parent
+			local touch = tool:FindFirstChildWhichIsA("TouchTransmitter", true)
+			touch = touch and touch.Parent
 
-			-- physical aura strike
-			if touchPart then
-
-				local parts = workspace:GetPartBoundsInBox(
-					touchPart.CFrame,
-					touchPart.Size + AURA_SIZE,
-					auraParams
-				)
-
-				for _,enemyPart in ipairs(parts) do
-					tap(touchPart,enemyPart)
-				end
-
+			if touch then
+				tap(touch, targetHRP)
 			end
-
 		end
 	end
 
 end)
 
-local BURST_FRAMES = 10
-
-LocalPlayer.CharacterAdded:Connect(function()
-	task.spawn(function()
-		for i = 1, BURST_FRAMES do
-			RunService.PreSimulation:Wait()
-			tap(touchPart, enemyPart)
-		end
-	end)
-end)
-
-print("⚡ Kill Aura Loaded")
+print("⚡ Focused Aura Loaded")

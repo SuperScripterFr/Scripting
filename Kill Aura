@@ -12,7 +12,7 @@ local AURA_SIZE = Vector3.new(30,30,30)
 local TOUCH_BURST = 2
 
 local lastAura = 0
-local AURA_RATE = 1/15 -- 30Hz max
+local AURA_RATE = 1/60 -- 30Hz max
 
 -- STATE
 local targetCache = {}

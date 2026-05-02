@@ -46,7 +46,7 @@ firetouchinterest(toolPart, targetHRP, 0)
 firetouchinterest(toolPart, targetHRP, 1)
 
 -- ⚡ CORE LOOP
-RunService.PreSimulation:Connect(function()
+RunService.Heartbeat:Connect(function()
 
 	local char = LocalPlayer.Character
 	if not char then return end
@@ -59,7 +59,7 @@ RunService.PreSimulation:Connect(function()
 	if not targetHRP then return end
 
 	-- ⚡ stabilization (VERY IMPORTANT)
-	RunService.PostSimulation:Wait()
+	RunService.Heartbeat:Wait()
 
 	-- ✅ ALL TOOLS → ONE TARGET HRP
 	for _, tool in ipairs(char:GetChildren()) do

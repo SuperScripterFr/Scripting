@@ -144,7 +144,7 @@ local function startToolLoop(toolName)
 			local root = char and char:FindFirstChild("HumanoidRootPart")
 			
 			if not root then
-				RunService.PreSimulation:Wait()
+				RunService.Heartbeat:Wait()
 				continue
 			end
 
@@ -156,8 +156,7 @@ local function startToolLoop(toolName)
 					end
 				end
 			end
-			RunService.PreSimulation:Wait()
-			RunService.PostSimulation:Wait()
+			RunService.Heartbeat:Wait()
 		end
 
 	end)
@@ -202,8 +201,7 @@ task.spawn(function()
 				instantStart()
 			end)
 		end
-		RunService.PreSimulation:Wait()
-		RunService.PostSimulation:Wait()
+		RunService.Heartbeat:Wait()
 	end
 end)
 

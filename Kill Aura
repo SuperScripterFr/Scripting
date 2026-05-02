@@ -23,32 +23,27 @@ local function getBestTarget()
 	local myRoot = getHRP(LocalPlayer)
 	if not myRoot then return end
 
-	local bestTarget = nil
-	local bestDist = RANGE
+	local best, dist = nil, 25
 
-	for _, p in ipairs(Players:GetPlayers()) do
+	for _,p in ipairs(Players:GetPlayers()) do
 		if p ~= LocalPlayer then
 			local r = getHRP(p)
 			if r then
-				local dist = (r.Position - myRoot.Position).Magnitude
-				if dist < bestDist then
-					bestDist = dist
-					bestTarget = r
+				local d = (r.Position - myRoot.Position).Magnitude
+				if d < dist then
+					dist = d
+					best = r
 				end
 			end
 		end
 	end
 
-	return bestTarget
+	return best
 end
 
--- ✅ CLEAN TAP (no redundant spam)
-local function tap(toolPart, enemyPart)
-	for i = 1, TOUCH_BURST do
-		firetouchinterest(toolPart, enemyPart, 0)
-		firetouchinterest(toolPart, enemyPart, 1)
-	end
-end
+-- ⚡ ONE CLEAN HIT ONLY
+firetouchinterest(toolPart, targetHRP, 0)
+firetouchinterest(toolPart, targetHRP, 1)
 
 -- ⚡ CORE LOOP
 RunService.PreSimulation:Connect(function()

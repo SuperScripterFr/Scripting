@@ -244,7 +244,7 @@ local function hitTarget(tool, touch, char)
 	end
 end
 
-RunService.PreSimulation:Connect(function()
+RunService.Heartbeat:Connect(function()
 
 	if not Run then return end
 	if #getgenv().configs.TargetList == 0 then return end
@@ -260,7 +260,7 @@ RunService.PreSimulation:Connect(function()
 	if #targets == 0 then return end
 
 	-- ⚡ STABILIZATION (CRITICAL)
-	RunService.PostSimulation:Wait()
+	RunService.Heartbeat:Wait()
 
 	for _, tool in ipairs(char:GetChildren()) do
 		if tool:IsA("Tool") then

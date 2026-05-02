@@ -21,28 +21,45 @@ local function fireRespawn()
 	if firing then return end
 	firing = true
 
-	-- FIRST (critical)
-	pcall(function()
-		if GuideEvent then
-			GuideEvent:FireServer()
-		else
-			player:LoadCharacter()
-		end
-	end)
+	local attempts = 0
+	local success = false
 
-	-- SECOND (only one backup)
+	local function attempt()
+		if success then return end
+
+		local ok = pcall(function()
+			if GuideEvent then
+				GuideEvent:FireServer()
+			else
+				player:LoadCharacter()
+			end
+		end)
+
+		if ok then
+			success = true
+		end
+	end
+
+	-- ⚡ FIRST SHOT (INSTANT)
+	attempt()
+
+	-- ⚡ FRAME-SYNCED FOLLOW UPS (NOT TIME BASED)
 	RunService.PreSimulation:Wait()
+	attempt()
 
-	pcall(function()
-		if GuideEvent then
-			GuideEvent:FireServer()
-		end
-	end)
+	RunService.PostSimulation:Wait()
+	attempt()
 
-	task.delay(0.15, function()
+	-- ⚡ FINAL SAFETY BURST
+	for i = 1,2 do
+		RunService.PreSimulation:Wait()
+		attempt()
+	end
+
+	-- reset
+	task.delay(0.15,function()
 		firing = false
 	end)
-
 end
 
 --========================================

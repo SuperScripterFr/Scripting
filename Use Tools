@@ -12,10 +12,10 @@ local player = Players.LocalPlayer
 -- THEME (MATCHES RTX HUB)
 ----------------------------------------------------------------
 local Theme = {
-	Accent = Color3.fromRGB(0,0,255),
-	Glass  = Color3.fromRGB(0,0,50),
-	Text   = Color3.fromRGB(255,255,255),
-	Stroke = Color3.fromRGB(0,0,255)
+	Accent = Color3.fromRGB(60,60,255),
+	Glass  = Color3.fromRGB(18,18,22),
+	Text   = Color3.fromRGB(40,40,255),
+	Stroke = Color3.fromRGB(70,70,255)
 }
 
 local ANIM = TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
@@ -36,7 +36,7 @@ end
 ----------------------------------------------------------------
 -- CONFIG — SAFE MAX POWER
 ----------------------------------------------------------------
-local ACTIVATIONS_PER_SECOND = 40
+local ACTIVATIONS_PER_SECOND = 35  -- Slightly stronger than before
 local EQUIP_REFRESH_RATE     = 0
 
 ----------------------------------------------------------------
@@ -48,84 +48,60 @@ local equipAccum     = 0
 local pulseInterval  = 1 / ACTIVATIONS_PER_SECOND
 
 ----------------------------------------------------------------
--- TOOL LOGIC (HEADLESS)
+-- TOOL CACHE (IMPORTANT)
 ----------------------------------------------------------------
-local function equipTools()
-	local char, bp = player.Character, player.Backpack
-	if not char or not bp then return end
+local toolCache = {}
 
-	for _, t in ipairs(bp:GetChildren()) do
-		if t:IsA("Tool") then
-			t.Parent = char
-		end
-	end
-end
+local function rebuildCache()
+	table.clear(toolCache)
 
-local function unequipTools()
-	local char, bp = player.Character, player.Backpack
-	if not char or not bp then return end
-
-	for _, t in ipairs(char:GetChildren()) do
-		if t:IsA("Tool") then
-			t.Parent = bp
-		end
-	end
-end
-
-local MAX_PARALLEL = 6
-local activeThreads = 0
-
-local function activateTools()
 	local char = player.Character
 	if not char then return end
 
-	for _, t in ipairs(char:GetChildren()) do
+	for _,t in ipairs(char:GetChildren()) do
 		if t:IsA("Tool") then
-
-			if activeThreads < MAX_PARALLEL then
-				activeThreads += 1
-
-				task.spawn(function()
-					pcall(t.Activate, t)
-					activeThreads -= 1
-				end)
-			end
+			table.insert(toolCache, t)
 		end
 	end
 end
 
 ----------------------------------------------------------------
--- ⚡ FRAME-SYNCED ENGINE (OPTIMIZED)
+-- SMART ACTIVATE
 ----------------------------------------------------------------
+local function activateBatch()
 
-local fireClock = 0
-local equipClock = 0
+	if #toolCache == 0 then return end
 
-RunService.PreSimulation:Connect(function(dt)
+	for i = 1, BURST do
+		local tool = toolCache[i]
+		if tool then
+			pcall(tool.Activate, tool)
+		end
+	end
+
+end
+
+----------------------------------------------------------------
+-- ENGINE LOOP (STABLE)
+----------------------------------------------------------------
+RunService.Heartbeat:Connect(function(dt)
+
 	if not active then return end
 
 	local now = os.clock()
 
-	-- ⚡ EQUIP PRIORITY (runs first in frame)
-	if now >= equipClock then
-		equipClock = now
-		equipTools()
+	-- ⚡ TOKEN REFILL (server-friendly pacing)
+	if now - lastRefill >= 1 then
+		tokens = TOKEN_REFILL
+		lastRefill = now
 	end
 
-	-- ⚡ ACTIVATION WINDOW (MULTI-PHASE BURST)
-	if now >= fireClock then
-		fireClock = now + pulseInterval
-
-		-- PHASE 1
-		activateTools()
-
-		-- PHASE 2 (same frame, deeper pipeline)
-		RunService.PostSimulation:Wait()
-		activateTools()
-
-		-- PHASE 3 (micro push)
-		task.defer(activateTools)
+	-- ⚡ ONLY FIRE IF TOKENS AVAILABLE
+	if tokens > 0 then
+		tokens -= 1
+		activateBatch()
 	end
+
 end)
 
 ----------------------------------------------------------------
@@ -196,6 +172,7 @@ local function setState(state)
 
 	if active then
 		equipTools()
+		activateTools()
 	else
 		unequipTools()
 	end
@@ -206,10 +183,11 @@ toggle.MouseButton1Click:Connect(function()
 end)
 
 UIS.InputBegan:Connect(function(i,g)
-	if not g and i.KeyCode == Enum.KeyCode.Q then
+	if not g and i.KeyCode == Enum.KeyCode.E then
 		setState(not active)
 	end
 end)
+
 
 ----------------------------------------------------------------
 -- Pre-Respawn
@@ -217,6 +195,7 @@ end)
 local spawnHandled = false
 
 task.spawn(function()
+
 	local lastChar = nil
 
 	while true do
@@ -224,20 +203,24 @@ task.spawn(function()
 
 		if char and char ~= lastChar then
 			lastChar = char
+			spawnHandled = false
 
 			if active then
-				task.defer(function()
+				task.spawn(function()
+					if spawnHandled then return end
+					spawnHandled = true
+				
+					-- ⚡ EQUIP IMMEDIATELY (EARLIER THAN CharacterAdded)
 					equipTools()
+					activateTools()
 
-					-- ⚡ FRAME BURST
-					for i = 1, 3 do
+					-- ⚡ MICRO BURST INSTANT
+					for i = 1, 2 do
 						activateTools()
-						RunService.PreSimulation:Wait()
 					end
 				end)
 			end
 		end
-
 		RunService.PreSimulation:Wait()
 	end
 end)
@@ -249,17 +232,20 @@ player.CharacterAdded:Connect(function(char)
 	if not active then return end
 
 	task.spawn(function()
-		local t0 = os.clock()
 
-		-- ⚡ 0.25s CONTROL WINDOW
-		while os.clock() - t0 < 0.25 do
+		local start = os.clock()
+
+		if spawnHandled then return end
+		spawnHandled = true
+
+		-- ⚡ FORCE EQUIP WINDOW (VERY IMPORTANT)
+		while os.clock() - start < 0.3 do
 			equipTools()
 			activateTools()
-			RunService.PreSimulation:Wait()
 		end
 
-		-- ⚡ FINAL SPIKE
-		for i = 1, 4 do
+		-- ⚡ FINAL BURST
+		for i = 1, 3 do
 			activateTools()
 		end
 	end)

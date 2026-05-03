@@ -10,16 +10,28 @@ local Tycoons = workspace:WaitForChild("Tycoons")
 local PAD_RANGE = 1000
 local TOUCH_BURST = 2 -- touches per frame per pad
 
-local allowedBases = {Stone=true, Magic=true, Storm=true, Robotic=true}
+local allowedBases = {Stone=true, Magic=true, Storm=true, Robotic=true, Nuclear=true, Frozen=true, Magma=true, Void=true, Thunder=true, Toxic=true, Mecha=true, Kong=true, Hyper=true, Shadow=true}
 local excludedBases = {Insanity=true, Giant=true, Dark=true, Spike=true, Web=true, Strong=true}
 
 -- TOOL -> BASE MAPPING
-local toolToBase = {
-	["Energy Sword"] = "Stone",
-	["Staff"] = "Magic",
-	["Axe"] = "Storm",
-	["Fist"] = "Robotic",
+local toolRules = {
+	-- SPT
+	{ pattern = "Energy Sword", base = "Stone" },
+	{ pattern = "Staff", base = "Magic" },
+	{ pattern = "Axe", base = "Storm" },
+	{ pattern = "Fist", base = "Robotic" },
+	-- MPT
+	{ pattern = "Claws", base = "ALL"},
+	{ pattern = "Punch", base = "Kong"},
 }
+
+local function getRule(toolName)
+	for _, rule in ipairs(toolRules) do
+		if string.find(toolName, rule.pattern) then
+			return rule
+		end
+	end
+end
 
 -- internals
 local padsByBase = {}
@@ -72,20 +84,18 @@ end)
 --==================================================
 -- 🧠 TOOL DETECTION
 --==================================================
-
-local function hasTool(toolName)
+local function hasToolPattern(pattern)
 
 	local function scan(container)
 		if not container then return false end
 		for _,t in ipairs(container:GetChildren()) do
-			if t:IsA("Tool") and t.Name == toolName then
+			if t:IsA("Tool") and string.find(t.Name, pattern) then
 				return true
 			end
 		end
 	end
 
 	return scan(player.Backpack) or scan(player.Character)
-
 end
 
 --==================================================
@@ -119,68 +129,75 @@ end
 -- 🚀 PER-TOOL PARALLEL LOOP
 --==================================================
 
-local function startToolLoop(toolName)
+local function startToolLoop(rule)
 
-	if activeLoops[toolName] then return end
+	if activeLoops[rule.pattern] then return end
 
-	local base = toolToBase[toolName]
-	if not base then return end
-
-	activeLoops[toolName] = true
+	activeLoops[rule.pattern] = true
 
 	task.spawn(function()
 
-		while activeLoops[toolName] do
+		while activeLoops[rule.pattern] do
 
-			-- STOP INSTANTLY IF TOOL ACQUIRED
-			if hasTool(toolName) then
-				activeLoops[toolName] = nil
+			-- ✅ stop if ANY matching tool found
+			if hasToolPattern(rule.pattern) then
+				activeLoops[rule.pattern] = nil
 				break
 			end
 
-			local pads = padsByBase[base]
-
 			local char = player.Character
 			local root = char and char:FindFirstChild("HumanoidRootPart")
-			
+
 			if not root then
 				RunService.PreSimulation:Wait()
 				continue
 			end
 
-			if pads then
-				local pad = getClosestPad(pads, root)
-				if pad then
-					for i = 1, TOUCH_BURST do
-						tap(root, pad)
+			-- ✅ BASE LOGIC
+			if rule.base == "ALL" then
+				-- hit ALL allowed pads (perfect for claws)
+				for _, pads in pairs(padsByBase) do
+					local pad = getClosestPad(pads, root)
+					if pad then
+						for i = 1, TOUCH_BURST do
+							tap(root, pad)
+						end
+					end
+				end
+			else
+				local pads = padsByBase[rule.base]
+				if pads then
+					local pad = getClosestPad(pads, root)
+					if pad then
+						for i = 1, TOUCH_BURST do
+							tap(root, pad)
+						end
 					end
 				end
 			end
+
 			RunService.PreSimulation:Wait()
 			RunService.PostSimulation:Wait()
 		end
 
 	end)
-
 end
-
 --==================================================
 -- 🔄 RESPAWN TRIGGER
 --==================================================
-
 local function instantStart()
-	for toolName in pairs(toolToBase) do
-		startToolLoop(toolName)
+	for _, rule in ipairs(toolRules) do
+		startToolLoop(rule)
 	end
 end
 
 local function startGrab()
-
-	for toolName in pairs(toolToBase) do
-		startToolLoop(toolName)
+	for _, rule in ipairs(toolRules) do
+		startToolLoop(rule)
 	end
-
 end
+
+--===================================================
 
 local SpawnDeltWith = false
 

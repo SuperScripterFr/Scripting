@@ -1,26 +1,30 @@
--- ⚡ ULTRA AURA V3 (SPAWN KILL OPTIMIZED)
+-- ⚡ ULTRA STABLE FRAME AURA (REAL OPTIMIZATION)
 
 local RANGE = 30
 local AURA_SIZE = Vector3.new(30,30,30)
 
 local TOUCH_RATE = 1/25
 local REMOTE_RATE = 1/25
-
-local BURST_WINDOW = 0.25 -- 🔥 CRITICAL
+local TOUCH_BURST = 1
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
 
+-- timing
 local lastTouch = 0
 local lastRemote = 0
 
-local spawnTime = 0
+-- cache
+local cachedTarget = nil
+local lastTargetUpdate = 0
 
 local auraParams = OverlapParams.new()
 auraParams.FilterType = Enum.RaycastFilterType.Include
 
+-- =========================
+-- HELPERS
 -- =========================
 
 local function getHRP(plr)
@@ -29,6 +33,15 @@ local function getHRP(plr)
 end
 
 local function getTarget()
+	local now = os.clock()
+
+	-- update target every 0.1s (huge perf win)
+	if now - lastTargetUpdate < 0.1 then
+		return cachedTarget
+	end
+
+	lastTargetUpdate = now
+
 	local myRoot = getHRP(LocalPlayer)
 	if not myRoot then return end
 
@@ -47,6 +60,7 @@ local function getTarget()
 		end
 	end
 
+	cachedTarget = best
 	return best
 end
 
@@ -55,29 +69,33 @@ local function getTouchPart(tool)
 	return t and t.Parent
 end
 
-local function equipAll(char)
-	for _,t in ipairs(char:GetChildren()) do
-		if t:IsA("Tool") and t.Parent ~= char then
-			t.Parent = char
-		end
+local function tap(part, enemyPart)
+	for i = 1, TOUCH_BURST do
+		firetouchinterest(part, enemyPart, 0)
+		firetouchinterest(part, enemyPart, 1)
 	end
 end
 
 -- =========================
--- ⚡ PRE STEP (EQUIP FIRST)
+-- PRE STEP (equip + prep)
 -- =========================
 
 RunService.PreSimulation:Connect(function()
+
 	local char = LocalPlayer.Character
 	if not char then return end
 
-	equipAll(char)
+	for _, tool in ipairs(char:GetChildren()) do
+		if tool:IsA("Tool") and tool.Parent ~= char then
+			tool.Parent = char
+		end
+	end
+
 end)
 
 -- =========================
--- ⚡ POST STEP (DAMAGE CORE)
+-- POST STEP (ACTUAL DAMAGE)
 -- =========================
-
 RunService.PostSimulation:Connect(function()
 
 	local char = LocalPlayer.Character
@@ -90,56 +108,46 @@ RunService.PostSimulation:Connect(function()
 
 	local now = os.clock()
 
-	local isSpawnBurst = (now - spawnTime) <= BURST_WINDOW
+	-- 🔹 GET PARTS ONCE (IMPORTANT)
+	local sampleTool = nil
+	for _,t in ipairs(char:GetChildren()) do
+		if t:IsA("Tool") then
+			sampleTool = t
+			break
+		end
+	end
 
+	if not sampleTool then return end
+
+	local touchPart = getTouchPart(sampleTool)
+	if not touchPart then return end
+
+	local parts = workspace:GetPartBoundsInBox(
+		touchPart.CFrame,
+		touchPart.Size + AURA_SIZE,
+		auraParams
+	)
+
+	-- 🔹 APPLY TO ALL TOOLS
 	for _, tool in ipairs(char:GetChildren()) do
 		if tool:IsA("Tool") then
 
-			local fightEvent = tool:FindFirstChild("FightEvent")
-			local touch = getTouchPart(tool)
-
-			-- 🔥 SPAWN BURST (IGNORES RATE LIMIT)
-			if isSpawnBurst then
-
+			-- REMOTE (slower, reliable)
+			if now - lastRemote >= REMOTE_RATE then
+				local fightEvent = tool:FindFirstChild("FightEvent")
 				if fightEvent then
-					fightEvent:FireServer()
-					fightEvent:FireServer()
-				end
-
-				if touch then
-					local parts = workspace:GetPartBoundsInBox(
-						touch.CFrame,
-						touch.Size + AURA_SIZE,
-						auraParams
-					)
-
-					for _, part in ipairs(parts) do
-						firetouchinterest(touch, part, 0)
-						firetouchinterest(touch, part, 1)
-					end
-				end
-
-			else
-				-- NORMAL MODE
-
-				if now - lastRemote >= REMOTE_RATE then
-					if fightEvent then
+					pcall(function()
 						fightEvent:FireServer()
-					end
+					end)
 				end
+			end
 
-				if now - lastTouch >= TOUCH_RATE then
-					if touch then
-						local parts = workspace:GetPartBoundsInBox(
-							touch.CFrame,
-							touch.Size + AURA_SIZE,
-							auraParams
-						)
-
-						for _, part in ipairs(parts) do
-							firetouchinterest(touch, part, 0)
-							firetouchinterest(touch, part, 1)
-						end
+			-- TOUCH (faster)
+			if now - lastTouch >= TOUCH_RATE then
+				local tp = getTouchPart(tool)
+				if tp then
+					for _, part in ipairs(parts) do
+						tap(tp, part)
 					end
 				end
 			end
@@ -147,32 +155,13 @@ RunService.PostSimulation:Connect(function()
 		end
 	end
 
-	if not isSpawnBurst then
-		if now - lastRemote >= REMOTE_RATE then
-			lastRemote = now
-		end
-		if now - lastTouch >= TOUCH_RATE then
-			lastTouch = now
-		end
+	if now - lastRemote >= REMOTE_RATE then
+		lastRemote = now
 	end
 
-end)
-
--- =========================
--- ⚡ RESPAWN DETECTION (EARLY)
--- =========================
-
-task.spawn(function()
-	local lastChar
-
-	while true do
-		local char = LocalPlayer.Character
-		if char and char ~= lastChar then
-			lastChar = char
-			spawnTime = os.clock() -- 🔥 START BURST WINDOW
-		end
-		RunService.PreSimulation:Wait()
+	if now - lastTouch >= TOUCH_RATE then
+		lastTouch = now
 	end
 end)
 
-print("⚡ Ultra Aura V3 Loaded")
+print("⚡ Ultra Aura Loaded")

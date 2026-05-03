@@ -614,7 +614,8 @@ toolsHeader.Parent = toolsPage
 local tools = {
     {"No Cooldown", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/No%20Cooldown"},
 	{"Event Spam", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Insta-Kill"},
-    {"Use Tools", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Use%20Tools"},
+    {"Use Tools Normal", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Use%20Tools"},
+	{"Use Tools Event", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Event%20Use%20Tools"},
     {"Kill Aura", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Kill%20Aura"},
 	{"Loop Tools", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Loop%20Tools"},
     {"Float/Grip", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Grip"},

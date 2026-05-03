@@ -590,8 +590,7 @@ welcomeText.Parent = pageWelcome
 local Welcome = {
     {"Get Base", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Get%20Base"},
     {"Respawn V4", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Respawn"},
-    {"SPT Get Tools", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Tool%20Grabber"},
-	{"MPT Get Tools", "https://pastefy.app/nXolcTRX/raw"},
+    {"Get Tools", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Tool%20Grabber"},
 }
 
 for i, t in ipairs(Welcome) do

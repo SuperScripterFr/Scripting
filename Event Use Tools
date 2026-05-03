@@ -139,7 +139,7 @@ gui.Parent = game:GetService("CoreGui")
 
 local toggle = Instance.new("TextButton", gui)
 toggle.Size = UDim2.fromOffset(180, 64)
-toggle.Position = UDim2.fromScale(0.98, 0.55)
+toggle.Position = UDim2.fromScale(1.5, 1)
 toggle.AnchorPoint = Vector2.new(1,0.5)
 toggle.Text = "USE TOOLS: OFF"
 toggle.Font = Enum.Font.GothamBold

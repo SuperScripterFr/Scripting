@@ -1,4 +1,4 @@
--- ⚡ SINGLE TARGET FOCUSED AURA
+-- ⚡ FOCUSED AURA (HITBOX ENHANCED)
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -8,7 +8,7 @@ local LocalPlayer = Players.LocalPlayer
 -- CONFIG
 local RANGE = 30
 local TOUCH_BURST = 2
-local AURA_RATE = 1/250
+local AURA_RATE = 1/25
 
 local lastAura = 0
 
@@ -18,12 +18,12 @@ local function getHRP(plr)
 	return c and c:FindFirstChild("HumanoidRootPart")
 end
 
--- ✅ FIND BEST TARGET (nearest)
-local function getBestTarget()
+-- 🎯 BEST TARGET (same logic, keep it)
+local function getBestTargetChar()
 	local myRoot = getHRP(LocalPlayer)
 	if not myRoot then return end
 
-	local bestTarget = nil
+	local bestChar = nil
 	local bestDist = RANGE
 
 	for _, p in ipairs(Players:GetPlayers()) do
@@ -33,16 +33,15 @@ local function getBestTarget()
 				local dist = (r.Position - myRoot.Position).Magnitude
 				if dist < bestDist then
 					bestDist = dist
-					bestTarget = r
+					bestChar = p.Character
 				end
 			end
 		end
 	end
 
-	return bestTarget
+	return bestChar
 end
 
--- ✅ CLEAN TAP (no redundant spam)
 local function tap(toolPart, enemyPart)
 	for i = 1, TOUCH_BURST do
 		firetouchinterest(toolPart, enemyPart, 0)
@@ -60,13 +59,26 @@ RunService.Heartbeat:Connect(function()
 	if now - lastAura < AURA_RATE then return end
 	lastAura = now
 
-	local targetHRP = getBestTarget()
-	if not targetHRP then return end
+	local targetChar = getBestTargetChar()
+	if not targetChar then return end
 
-	-- ⚡ stabilization (VERY IMPORTANT)
+	-- 🔥 USE HITBOX ENGINE IF AVAILABLE
+	local partsToHit = nil
+
+	if _G.GetExpandedParts then
+		partsToHit = _G.GetExpandedParts(targetChar)
+	end
+
+	-- fallback if hitbox not loaded
+	if not partsToHit or #partsToHit == 0 then
+		local hrp = targetChar:FindFirstChild("HumanoidRootPart")
+		if not hrp then return end
+		partsToHit = {hrp}
+	end
+
+	-- ⚡ stabilization (important)
 	RunService.Heartbeat:Wait()
 
-	-- ✅ ALL TOOLS → ONE TARGET HRP
 	for _, tool in ipairs(char:GetChildren()) do
 		if tool:IsA("Tool") then
 
@@ -78,11 +90,13 @@ RunService.Heartbeat:Connect(function()
 			touch = touch and touch.Parent
 
 			if touch then
-				tap(touch, targetHRP)
+				for _, part in ipairs(partsToHit) do
+					tap(touch, part)
+				end
 			end
 		end
 	end
 
 end)
 
-print("⚡ Focused Aura Loaded")
+print("⚡ Focused Aura (Hitbox Enhanced) Loaded")

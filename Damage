@@ -1,66 +1,101 @@
--- ⚔️ Hitbox Expander V2 (Optimized)
+-- ⚔️ SMART HITBOX EXPANDER (PHANTOM VERSION)
 
 _G.HitboxSize = 10
 _G.Enabled = true
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+
 local LocalPlayer = Players.LocalPlayer
 
-local modified = {}
+local activeBoxes = {}
 
-local function applyHitbox(player)
-	if player == LocalPlayer then return end
-	if not player.Character then return end
-	
-	local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+-- CREATE PHANTOM HITBOX
+local function createHitbox(char)
+	if not char then return end
+
+	local hrp = char:FindFirstChild("HumanoidRootPart")
 	if not hrp then return end
-	
-	if modified[hrp] then return end
-	modified[hrp] = true
-	
-	pcall(function()
-		hrp.Size = Vector3.new(_G.HitboxSize, _G.HitboxSize, _G.HitboxSize)
-		hrp.Transparency = 0.9
-		hrp.BrickColor = BrickColor.new("Royal blue")
-		hrp.Material = Enum.Material.SmoothPlastic
-		hrp.CanCollide = false
-		
-		local box = Instance.new("SelectionBox")
-		box.Name = "HitboxVisual"
-		box.Adornee = hrp
-		box.LineThickness = 0.05
-		box.Color3 = Color3.fromRGB(0,0,0)
-		box.SurfaceTransparency = 1
-		box.Parent = hrp
-	end)
+
+	-- prevent duplicates
+	if activeBoxes[char] then return end
+
+	local box = Instance.new("Part")
+	box.Name = "ClientHitbox"
+	box.Size = Vector3.new(_G.HitboxSize, _G.HitboxSize, _G.HitboxSize)
+	box.Transparency = 1
+	box.Anchored = false
+	box.CanCollide = false
+	box.CanTouch = true
+	box.Massless = true
+
+	-- IMPORTANT: no physics interference
+	box.CollisionGroup = "Default"
+
+	-- weld to HRP
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = box
+	weld.Part1 = hrp
+	weld.Parent = box
+
+	box.CFrame = hrp.CFrame
+	box.Parent = char
+
+	-- OPTIONAL VISUAL
+	local vis = Instance.new("SelectionBox")
+	vis.Adornee = box
+	vis.LineThickness = 0.03
+	vis.Color3 = Color3.fromRGB(0, 0, 255)
+	vis.SurfaceTransparency = 1
+	vis.Parent = box
+
+	activeBoxes[char] = box
 end
 
-local function updatePlayers()
-	for _,player in ipairs(Players:GetPlayers()) do
-		applyHitbox(player)
+-- CLEANUP
+local function removeHitbox(char)
+	local box = activeBoxes[char]
+	if box then
+		box:Destroy()
+		activeBoxes[char] = nil
 	end
 end
 
-Players.PlayerAdded:Connect(function(player)
-	player.CharacterAdded:Connect(function()
-		task.wait(0.5)
-		applyHitbox(player)
-	end)
-end)
+-- APPLY TO PLAYER
+local function handlePlayer(player)
+	if player == LocalPlayer then return end
 
-for _,player in ipairs(Players:GetPlayers()) do
-	if player ~= LocalPlayer then
-		player.CharacterAdded:Connect(function()
-			task.wait(0.5)
-			applyHitbox(player)
-		end)
+	player.CharacterAdded:Connect(function(char)
+		task.wait(0.1) -- faster than your old 0.5
+		if _G.Enabled then
+			createHitbox(char)
+		end
+	end)
+
+	if player.Character then
+		createHitbox(player.Character)
 	end
 end
 
+-- INIT
+for _, p in ipairs(Players:GetPlayers()) do
+	handlePlayer(p)
+end
+
+Players.PlayerAdded:Connect(handlePlayer)
+
+-- 🔄 KEEP SIZE UPDATED (dynamic tuning)
 RunService.Heartbeat:Connect(function()
 	if not _G.Enabled then return end
-	updatePlayers()
+
+	for char, box in pairs(activeBoxes) do
+		if box and box.Parent then
+			local size = Vector3.new(_G.HitboxSize, _G.HitboxSize, _G.HitboxSize)
+			if box.Size ~= size then
+				box.Size = size
+			end
+		end
+	end
 end)
 
-print("⚔️ Optimized Hitbox Expander Loaded")
+print("⚔️ Smart Hitbox Loaded")

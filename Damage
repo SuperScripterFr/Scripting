@@ -1,6 +1,6 @@
 -- ⚔️ HITBOX ASSIST (REAL IMPACT VERSION)
 
-_G.HitboxSize = 8 -- keep reasonable (8–12 sweet spot)
+_G.HitboxSize = 12
 _G.Enabled = true
 
 local Players = game:GetService("Players")

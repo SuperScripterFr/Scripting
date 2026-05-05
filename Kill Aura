@@ -8,7 +8,7 @@ local LocalPlayer = Players.LocalPlayer
 -- CONFIG
 local RANGE = 30
 local TOUCH_BURST = 2
-local AURA_RATE = 1/40 -- slightly faster now that it's lighter
+local AURA_RATE = 1/250
 
 local lastAura = 0
 

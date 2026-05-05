@@ -1,4 +1,4 @@
--- ⚔️ HITBOX ASSIST (REAL IMPACT VERSION)
+-- ⚔️ HITBOX ASSIST (FINAL - PERFORMANCE + REAL IMPACT)
 
 _G.HitboxSize = 12
 _G.Enabled = true
@@ -8,11 +8,12 @@ local RunService = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
 
--- cache
 local targets = {}
+local overlap = OverlapParams.new()
+overlap.FilterType = Enum.RaycastFilterType.Include
 
--- 🔍 EXPANDED TARGET DATA (used by aura)
-local function buildTargetList()
+-- BUILD TARGET LIST (CACHED)
+local function buildTargets()
 
 	local myChar = LocalPlayer.Character
 	if not myChar then return end
@@ -31,46 +32,40 @@ local function buildTargetList()
 			if hrp then
 				local dist = (hrp.Position - myRoot.Position).Magnitude
 
-				-- 🎯 EXPANDED RANGE USING HITBOX SIZE
 				if dist <= (30 + _G.HitboxSize) then
-					table.insert(targets, {
-						char = char,
-						hrp = hrp,
-						size = _G.HitboxSize
-					})
+					table.insert(targets, char)
 				end
 			end
 		end
 	end
 end
 
--- 🎯 EXPANDED HIT DETECTION (KEY PART)
-local function getExpandedParts(target)
+-- 🔥 EXPANDED QUERY (CLEAN + FILTERED)
+local function getExpandedParts(char)
 
-	local hrp = target.hrp
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
 	if not hrp then return end
 
-	-- simulate bigger hitbox WITHOUT changing physics
-	local size = Vector3.new(_G.HitboxSize, _G.HitboxSize, _G.HitboxSize)
+	overlap.FilterDescendantsInstances = {char}
 
 	return workspace:GetPartBoundsInBox(
 		hrp.CFrame,
-		size,
-		nil
+		Vector3.new(_G.HitboxSize, _G.HitboxSize, _G.HitboxSize),
+		overlap
 	)
 end
 
--- 🔄 MAIN UPDATE
+-- UPDATE LOOP (FAST + LIGHT)
 RunService.PreSimulation:Connect(function()
 	if not _G.Enabled then return end
-	buildTargetList()
+	buildTargets()
 end)
 
--- expose for aura use
+-- EXPORT (used by aura)
 _G.GetExpandedTargets = function()
 	return targets
 end
 
 _G.GetExpandedParts = getExpandedParts
 
-print("⚔️ Real Hitbox Assist Loaded")
+print("⚔️ Hitbox Assist (Final) Loaded")

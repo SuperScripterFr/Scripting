@@ -93,6 +93,92 @@ RunService.PreSimulation:Connect(function()
 
 end)
 
+-- ⚔️ FUNCTIONAL HITBOX EXPANDER
+
+_G.HitboxSize = 10
+_G.Enabled = true
+
+local hitboxes = {}
+
+-- CREATE HITBOX (QUERY-BASED, NOT PHYSICS)
+local function createHitbox(char)
+	if not char then return end
+
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+
+	if hitboxes[char] then return end
+
+	local box = Instance.new("Part")
+	box.Name = "AuraHitbox"
+	box.Size = Vector3.new(_G.HitboxSize, _G.HitboxSize, _G.HitboxSize)
+
+	box.Transparency = 1
+	box.Anchored = true -- 🔥 KEY: no physics at all
+	box.CanCollide = false
+	box.CanTouch = false -- we DO NOT rely on .Touched
+	box.CanQuery = true -- 🔥 THIS is what matters
+
+	box.CFrame = hrp.CFrame
+	box.Parent = workspace -- not inside character (important)
+
+	hitboxes[char] = {
+		box = box,
+		hrp = hrp
+	}
+end
+
+-- REMOVE
+local function removeHitbox(char)
+	if hitboxes[char] then
+		hitboxes[char].box:Destroy()
+		hitboxes[char] = nil
+	end
+end
+
+-- TRACK PLAYERS
+local function handlePlayer(player)
+	if player == LocalPlayer then return end
+
+	player.CharacterAdded:Connect(function(char)
+		task.wait(0.05)
+		if _G.Enabled then
+			createHitbox(char)
+		end
+	end)
+
+	if player.Character then
+		createHitbox(player.Character)
+	end
+end
+
+for _,p in ipairs(Players:GetPlayers()) do
+	handlePlayer(p)
+end
+
+Players.PlayerAdded:Connect(handlePlayer)
+
+-- 🔄 SYNC LOOP (VERY LIGHT)
+RunService.PreSimulation:Connect(function()
+
+	if not _G.Enabled then return end
+
+	for char,data in pairs(hitboxes) do
+		if char.Parent and data.hrp then
+			data.box.CFrame = data.hrp.CFrame
+
+			-- dynamic resize (cheap)
+			local targetSize = Vector3.new(_G.HitboxSize, _G.HitboxSize, _G.HitboxSize)
+			if data.box.Size ~= targetSize then
+				data.box.Size = targetSize
+			end
+		end
+	end
+
+end)
+
+print("⚔️ Functional Hitbox Loaded (Query-Based)")
+
 -- =========================
 -- POST STEP (ACTUAL DAMAGE)
 -- =========================
@@ -104,7 +190,18 @@ RunService.PostSimulation:Connect(function()
 	local target = getTarget()
 	if not target then return end
 
-	auraParams.FilterDescendantsInstances = {target}
+	local partsToScan = {}
+
+	-- include real character
+	table.insert(partsToScan, target)
+	
+	-- include expanded hitbox
+	local hb = hitboxes[target]
+	if hb then
+		table.insert(partsToScan, hb.box)
+	end
+	
+	auraParams.FilterDescendantsInstances = partsToScan
 
 	local now = os.clock()
 

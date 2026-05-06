@@ -733,14 +733,14 @@ local function createActionButton(textLabel, url)
 				tw(actBtn, {Size = UDim2.new(0, 160, 1, 0)}, 0.12):Play()
 				wait(0.8)
 				actBtn.Text = oldText
-				actBtn.BackgroundColor3 = Settings.Theme and Settings.Theme.Accent or DEFAULT_THEME.Accent
+				actBtn.BackgroundColor3 = DEFAULT_THEME.Accent
 			else
 				warn("[RTXHub] Action failed:", res)
 				actBtn.Text = "Error"
 				actBtn.BackgroundColor3 = Color3.fromRGB(160,50,50)
 				wait(1.2)
 				actBtn.Text = oldText
-				actBtn.BackgroundColor3 = Settings.Theme and Settings.Theme.Accent or DEFAULT_THEME.Accent
+				actBtn.BackgroundColor3 = DEFAULT_THEME.Accent
 			end
 			running = false
 		end)

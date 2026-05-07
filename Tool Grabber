@@ -175,7 +175,7 @@ local function startToolLoop(rule)
 					end
 				end
 			end
-			RunService.Heartbeat:Connect(function(dt))
+			RunService.Heartbeat:Wait()
 		end
 
 	end)
@@ -217,7 +217,7 @@ task.spawn(function()
 				instantStart()
 			end)
 		end
-		RunService.Heartbeat:Connect(function(dt))
+		RunService.Heartbeat:Wait()
 	end
 end)
 

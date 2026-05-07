@@ -1,123 +1,254 @@
--- ⚡ QUANTUM INSTANT PARALLEL TOOL GRABBER
+-- ⚡ RTX QUANTUM TOOL GRABBER V3
+
+---------------------------------------------------
+-- SERVICES
+---------------------------------------------------
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
-local player = Players.LocalPlayer
+local LocalPlayer = Players.LocalPlayer
 local Tycoons = workspace:WaitForChild("Tycoons")
 
+---------------------------------------------------
 -- CONFIG
-local PAD_RANGE = 1000
-local TOUCH_BURST = 2 -- touches per frame per pad
+---------------------------------------------------
 
-local allowedBases = {Stone=true, Magic=true, Storm=true, Robotic=true, Nuclear=true, Frozen=true, Magma=true, Void=true, Thunder=true, Toxic=true, Mecha=true, Kong=true, Hyper=true, Shadow=true}
-local excludedBases = {Insanity=true, Giant=true, Dark=true, Spike=true, Web=true, Strong=true}
+local PAD_RANGE = 1250
+local TOUCH_BURST = 3
 
--- TOOL -> BASE MAPPING
-local toolRules = {
-	-- SPT
-	{ pattern = "Energy Sword", base = "Stone" },
-	{ pattern = "Staff", base = "Magic" },
-	{ pattern = "Axe", base = "Storm" },
-	{ pattern = "Fist", base = "Robotic" },
-	-- MPT
-	{ pattern = "Claws", base = "ALL"},
-	{ pattern = "Punch", base = "Kong"},
+local BURST_TIME = 0.75
+local RECOVERY_INTERVAL = 1
+
+---------------------------------------------------
+-- BASE FILTERS
+---------------------------------------------------
+
+local allowedBases = {
+	Stone=true,
+	Magic=true,
+	Storm=true,
+	Robotic=true,
+	Nuclear=true,
+	Frozen=true,
+	Magma=true,
+	Void=true,
+	Thunder=true,
+	Toxic=true,
+	Mecha=true,
+	Kong=true,
+	Hyper=true,
+	Shadow=true
 }
 
-local function getRule(toolName)
-	for _, rule in ipairs(toolRules) do
-		if string.find(toolName, rule.pattern) then
-			return rule
-		end
-	end
-end
+local excludedBases = {
+	Insanity=true,
+	Giant=true,
+	Dark=true,
+	Spike=true,
+	Web=true,
+	Strong=true
+}
 
--- internals
+---------------------------------------------------
+-- TOOL RULES
+---------------------------------------------------
+
+local toolRules = {
+	{pattern="Energy Sword", base="Stone"},
+	{pattern="Staff", base="Magic"},
+	{pattern="Axe", base="Storm"},
+	{pattern="Fist", base="Robotic"},
+
+	{pattern="Claws", base="ALL"},
+	{pattern="Punch", base="Kong"},
+}
+
+---------------------------------------------------
+-- STATE
+---------------------------------------------------
+
 local padsByBase = {}
 local activeLoops = {}
 
---==================================================
--- 🔍 PAD REGISTRATION
---==================================================
+local currentCharacter
+local currentRoot
 
-local function register(pad)
+---------------------------------------------------
+-- CHARACTER TRACKING
+---------------------------------------------------
 
-	local base = pad.Parent and pad.Parent.Parent
-	if not base then return end
+local function bindCharacter(char)
 
-	if excludedBases[base.Name] then return end
-	if not allowedBases[base.Name] then return end
+	currentCharacter = char
+	currentRoot = nil
 
-	padsByBase[base.Name] = padsByBase[base.Name] or {}
+	if not char then
+		return
+	end
 
-	table.insert(padsByBase[base.Name], pad)
+	local root = char:FindFirstChild("HumanoidRootPart")
 
-end
+	if root then
+		currentRoot = root
+	else
+		task.spawn(function()
 
-for _, tycoon in ipairs(Tycoons:GetChildren()) do
-	for _, folder in ipairs(tycoon:GetChildren()) do
-		if folder.Name:find("GearGiver1") then
-			for _, pad in ipairs(folder:GetChildren()) do
-				if pad:IsA("BasePart") then
-					local touch = pad:FindFirstChildOfClass("TouchTransmitter")
-					if touch then
-						register(pad)
-					end
-				end
+			local hrp = char:WaitForChild("HumanoidRootPart",5)
+
+			if currentCharacter == char then
+				currentRoot = hrp
 			end
-		end
+		end)
 	end
 end
 
-Tycoons.DescendantAdded:Connect(function(d)
-	if not d:IsA("TouchTransmitter") then return end
+if LocalPlayer.Character then
+	bindCharacter(LocalPlayer.Character)
+end
 
-	local parent = d.Parent
-	local container = parent and parent.Parent
+LocalPlayer.CharacterAdded:Connect(bindCharacter)
 
-	if container and container.Name:find("GearGiver1") then
-		register(parent)
-	end
-end)
+---------------------------------------------------
+-- TOOL DETECTION
+---------------------------------------------------
 
---==================================================
--- 🧠 TOOL DETECTION
---==================================================
-local function hasToolPattern(pattern)
+local function hasTool(pattern)
 
-	local function scan(container)
-		if not container then return false end
-		for _,t in ipairs(container:GetChildren()) do
-			if t:IsA("Tool") and string.find(t.Name, pattern) then
+	local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
+	local char = currentCharacter
+
+	if backpack then
+		for _,v in ipairs(backpack:GetChildren()) do
+			if v:IsA("Tool") and string.find(v.Name,pattern) then
 				return true
 			end
 		end
 	end
 
-	return scan(player.Backpack) or scan(player.Character)
+	if char then
+		for _,v in ipairs(char:GetChildren()) do
+			if v:IsA("Tool") and string.find(v.Name,pattern) then
+				return true
+			end
+		end
+	end
+
+	return false
 end
 
---==================================================
--- ⚡ TOUCH FUNCTION
---==================================================
+---------------------------------------------------
+-- TOUCH
+---------------------------------------------------
 
 local function tap(root,pad)
+
 	pcall(firetouchinterest,root,pad,0)
 	pcall(firetouchinterest,root,pad,1)
+
 end
 
---==================================================
--- 🎯 CLOSEST PAD FINDER (NEW)
---==================================================
+---------------------------------------------------
+-- PAD REGISTRATION
+---------------------------------------------------
 
-local function getClosestPad(pads, root)
-	local closest, dist
+local function registerPad(pad)
 
-	for _, pad in ipairs(pads) do
-		local d = (pad.Position - root.Position).Magnitude
-		if d < PAD_RANGE and (not dist or d < dist) then
-			dist = d
+	if not pad:IsA("BasePart") then
+		return
+	end
+
+	if not pad:FindFirstChildOfClass("TouchTransmitter") then
+		return
+	end
+
+	local giver = pad.Parent
+	if not giver or not giver.Name:find("GearGiver1") then
+		return
+	end
+
+	local base = giver.Parent
+	if not base then
+		return
+	end
+
+	local baseName = base.Name
+
+	if excludedBases[baseName] then
+		return
+	end
+
+	if not allowedBases[baseName] then
+		return
+	end
+
+	padsByBase[baseName] = padsByBase[baseName] or {}
+
+	-- avoid duplicates
+	for _,p in ipairs(padsByBase[baseName]) do
+		if p == pad then
+			return
+		end
+	end
+
+	table.insert(padsByBase[baseName],pad)
+end
+
+---------------------------------------------------
+-- INITIAL PAD SCAN
+---------------------------------------------------
+
+for _,obj in ipairs(Tycoons:GetDescendants()) do
+	if obj:IsA("BasePart") then
+		registerPad(obj)
+	end
+end
+
+---------------------------------------------------
+-- LIVE PAD DETECTION
+---------------------------------------------------
+
+Tycoons.DescendantAdded:Connect(function(obj)
+
+	if obj:IsA("BasePart") then
+		registerPad(obj)
+	end
+end)
+
+---------------------------------------------------
+-- CLOSEST PAD
+---------------------------------------------------
+
+local function getClosestPad(baseName)
+
+	local root = currentRoot
+
+	if not root then
+		return nil
+	end
+
+	local pads = padsByBase[baseName]
+
+	if not pads then
+		return nil
+	end
+
+	local closest
+	local bestDist = PAD_RANGE
+
+	for i = #pads,1,-1 do
+
+		local pad = pads[i]
+
+		if not pad or not pad.Parent then
+			table.remove(pads,i)
+			continue
+		end
+
+		local dist = (pad.Position - root.Position).Magnitude
+
+		if dist < bestDist then
+			bestDist = dist
 			closest = pad
 		end
 	end
@@ -125,13 +256,15 @@ local function getClosestPad(pads, root)
 	return closest
 end
 
---==================================================
--- 🚀 PER-TOOL PARALLEL LOOP
---==================================================
+---------------------------------------------------
+-- TOOL LOOP
+---------------------------------------------------
 
-local function startToolLoop(rule)
+local function startLoop(rule)
 
-	if activeLoops[rule.pattern] then return end
+	if activeLoops[rule.pattern] then
+		return
+	end
 
 	activeLoops[rule.pattern] = true
 
@@ -139,98 +272,153 @@ local function startToolLoop(rule)
 
 		while activeLoops[rule.pattern] do
 
-			-- ✅ stop if ANY matching tool found
-			if hasToolPattern(rule.pattern) then
+			if hasTool(rule.pattern) then
 				activeLoops[rule.pattern] = nil
 				break
 			end
 
-			local char = player.Character
-			local root = char and char:FindFirstChild("HumanoidRootPart")
+			local root = currentRoot
 
 			if not root then
-				RunService.PreSimulation:Wait()
+				RunService.Heartbeat:Wait()
 				continue
 			end
 
-			-- ✅ BASE LOGIC
+			------------------------------------------------
+			-- ALL BASES
+			------------------------------------------------
+
 			if rule.base == "ALL" then
-				-- hit ALL allowed pads (perfect for claws)
-				for _, pads in pairs(padsByBase) do
-					local pad = getClosestPad(pads, root)
+
+				for baseName in pairs(padsByBase) do
+
+					local pad = getClosestPad(baseName)
+
 					if pad then
 						for i = 1, TOUCH_BURST do
-							tap(root, pad)
+							tap(root,pad)
 						end
 					end
 				end
+
+			------------------------------------------------
+			-- SINGLE BASE
+			------------------------------------------------
+
 			else
-				local pads = padsByBase[rule.base]
-				if pads then
-					local pad = getClosestPad(pads, root)
-					if pad then
-						for i = 1, TOUCH_BURST do
-							tap(root, pad)
-						end
+
+				local pad = getClosestPad(rule.base)
+
+				if pad then
+					for i = 1, TOUCH_BURST do
+						tap(root,pad)
 					end
 				end
 			end
+
 			RunService.Heartbeat:Wait()
 		end
-
 	end)
 end
---==================================================
--- 🔄 RESPAWN TRIGGER
---==================================================
-local function instantStart()
-	for _, rule in ipairs(toolRules) do
-		startToolLoop(rule)
+
+---------------------------------------------------
+-- START ALL
+---------------------------------------------------
+
+local function startAll()
+
+	for _,rule in ipairs(toolRules) do
+
+		if not hasTool(rule.pattern) then
+			startLoop(rule)
+		end
 	end
 end
 
-local function startGrab()
-	for _, rule in ipairs(toolRules) do
-		startToolLoop(rule)
-	end
+---------------------------------------------------
+-- ⚡ GUIDE EVENT BURST
+---------------------------------------------------
+
+local function burstWindow()
+
+	task.spawn(function()
+
+		local t0 = os.clock()
+
+		while os.clock() - t0 < BURST_TIME do
+
+			startAll()
+
+			RunService.Heartbeat:Wait()
+		end
+	end)
 end
 
---===================================================
+---------------------------------------------------
+-- GUIDE EVENT HOOK
+---------------------------------------------------
 
-local SpawnDeltWith = false
+local GuideEvent = workspace:FindFirstChild("GuideEvent",true)
+
+if GuideEvent and GuideEvent:IsA("RemoteEvent") then
+
+	local old
+	old = hookmetamethod(game,"__namecall",function(self,...)
+
+		local method = getnamecallmethod()
+
+		if self == GuideEvent and method == "FireServer" then
+
+			task.defer(function()
+
+				-- starts BEFORE respawn fully settles
+				burstWindow()
+
+			end)
+		end
+
+		return old(self,...)
+	end)
+end
+
+---------------------------------------------------
+-- CHARACTERADDED FALLBACK
+---------------------------------------------------
+
+LocalPlayer.CharacterAdded:Connect(function()
+
+	-- reset dead loops
+	table.clear(activeLoops)
+
+	burstWindow()
+end)
+
+---------------------------------------------------
+-- AUTO RECOVERY
+---------------------------------------------------
 
 task.spawn(function()
 
-	local lastChar = nil
-
 	while true do
-		local char = player.Character
 
-		if char and char ~= lastChar then
-			lastChar = char
-			SpawnDeltWith = false
+		for _,rule in ipairs(toolRules) do
 
-			-- ⚡ fires slightly earlier than CharacterAdded
-			task.spawn(function()
-				if SpawnDeltWith then return end
-				SpawnDeltWith = true
-				instantStart()
-			end)
+			if not hasTool(rule.pattern) then
+
+				if not activeLoops[rule.pattern] then
+					startLoop(rule)
+				end
+			end
 		end
-		RunService.Heartbeat:Wait()
+
+		task.wait(RECOVERY_INTERVAL)
 	end
 end)
 
--- ChacterAdded fallback incase above method fails
-player.CharacterAdded:Connect(function(char)
-	if SpawnDeltWith then return end
-	SpawnDeltWith = true
-	instantStart() -- start immediately
-end)
+---------------------------------------------------
+-- INITIAL START
+---------------------------------------------------
 
--- also run immediately if already spawned
-if player.Character then
-	startGrab()
-end
+startAll()
 
-print("⚡ Quantum Instant Tool Grabber Loaded")
+print("⚡ RTX Quantum Tool Grabber V3 Loaded")

@@ -1,11 +1,11 @@
 -- ⚡ ULTRA STABLE FRAME AURA (REAL OPTIMIZATION)
 
-local RANGE = 30
-local AURA_SIZE = Vector3.new(30,30,30)
+local RANGE = 15
+local AURA_SIZE = Vector3.new(15,15,15)
 
-local TOUCH_RATE = 1/25
-local REMOTE_RATE = 1/55
-local TOUCH_BURST = 1
+local TOUCH_RATE = 32.5
+local REMOTE_RATE = 75
+local TOUCH_BURST = 1.5
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")

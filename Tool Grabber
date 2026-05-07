@@ -175,9 +175,7 @@ local function startToolLoop(rule)
 					end
 				end
 			end
-
-			RunService.PreSimulation:Wait()
-			RunService.PostSimulation:Wait()
+			RunService.Heartbeat:Connect(function(dt)
 		end
 
 	end)
@@ -219,8 +217,7 @@ task.spawn(function()
 				instantStart()
 			end)
 		end
-		RunService.PreSimulation:Wait()
-		RunService.PostSimulation:Wait()
+		RunService.Heartbeat:Connect(function(dt)
 	end
 end)
 

@@ -1,4 +1,5 @@
--- ⚡ RTX QUANTUM TOOL GRABBER V3
+-- ⚡ RTX TOOL GRABBER V4
+-- FINAL OPTIMIZED EDITION
 
 ---------------------------------------------------
 -- SERVICES
@@ -15,10 +16,9 @@ local Tycoons = workspace:WaitForChild("Tycoons")
 ---------------------------------------------------
 
 local PAD_RANGE = 1250
-local TOUCH_BURST = 3
+local TOUCH_BURST = 2
 
-local BURST_TIME = 0.75
-local RECOVERY_INTERVAL = 1
+local ACQUIRE_WINDOW = 1.25
 
 ---------------------------------------------------
 -- BASE FILTERS
@@ -69,13 +69,14 @@ local toolRules = {
 ---------------------------------------------------
 
 local padsByBase = {}
-local activeLoops = {}
 
 local currentCharacter
 local currentRoot
 
+local acquisitionActive = false
+
 ---------------------------------------------------
--- CHARACTER TRACKING
+-- CHARACTER
 ---------------------------------------------------
 
 local function bindCharacter(char)
@@ -87,11 +88,9 @@ local function bindCharacter(char)
 		return
 	end
 
-	local root = char:FindFirstChild("HumanoidRootPart")
+	currentRoot = char:FindFirstChild("HumanoidRootPart")
 
-	if root then
-		currentRoot = root
-	else
+	if not currentRoot then
 		task.spawn(function()
 
 			local hrp = char:WaitForChild("HumanoidRootPart",5)
@@ -110,13 +109,12 @@ end
 LocalPlayer.CharacterAdded:Connect(bindCharacter)
 
 ---------------------------------------------------
--- TOOL DETECTION
+-- TOOL CHECK
 ---------------------------------------------------
 
 local function hasTool(pattern)
 
 	local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
-	local char = currentCharacter
 
 	if backpack then
 		for _,v in ipairs(backpack:GetChildren()) do
@@ -125,6 +123,8 @@ local function hasTool(pattern)
 			end
 		end
 	end
+
+	local char = currentCharacter
 
 	if char then
 		for _,v in ipairs(char:GetChildren()) do
@@ -135,17 +135,6 @@ local function hasTool(pattern)
 	end
 
 	return false
-end
-
----------------------------------------------------
--- TOUCH
----------------------------------------------------
-
-local function tap(root,pad)
-
-	pcall(firetouchinterest,root,pad,0)
-	pcall(firetouchinterest,root,pad,1)
-
 end
 
 ---------------------------------------------------
@@ -163,11 +152,13 @@ local function registerPad(pad)
 	end
 
 	local giver = pad.Parent
+
 	if not giver or not giver.Name:find("GearGiver1") then
 		return
 	end
 
 	local base = giver.Parent
+
 	if not base then
 		return
 	end
@@ -184,9 +175,8 @@ local function registerPad(pad)
 
 	padsByBase[baseName] = padsByBase[baseName] or {}
 
-	-- avoid duplicates
-	for _,p in ipairs(padsByBase[baseName]) do
-		if p == pad then
+	for _,existing in ipairs(padsByBase[baseName]) do
+		if existing == pad then
 			return
 		end
 	end
@@ -195,7 +185,7 @@ local function registerPad(pad)
 end
 
 ---------------------------------------------------
--- INITIAL PAD SCAN
+-- INITIAL SCAN
 ---------------------------------------------------
 
 for _,obj in ipairs(Tycoons:GetDescendants()) do
@@ -205,7 +195,7 @@ for _,obj in ipairs(Tycoons:GetDescendants()) do
 end
 
 ---------------------------------------------------
--- LIVE PAD DETECTION
+-- LIVE SCAN
 ---------------------------------------------------
 
 Tycoons.DescendantAdded:Connect(function(obj)
@@ -216,7 +206,7 @@ Tycoons.DescendantAdded:Connect(function(obj)
 end)
 
 ---------------------------------------------------
--- CLOSEST PAD
+-- CLEANUP + CLOSEST PAD
 ---------------------------------------------------
 
 local function getClosestPad(baseName)
@@ -253,29 +243,43 @@ local function getClosestPad(baseName)
 		end
 	end
 
+	-- ⚡ memory cleanup
+	if #pads == 0 then
+		padsByBase[baseName] = nil
+	end
+
 	return closest
 end
 
 ---------------------------------------------------
--- TOOL LOOP
+-- TOUCH
 ---------------------------------------------------
 
-local function startLoop(rule)
+local function tap(root,pad)
 
-	if activeLoops[rule.pattern] then
+	for i = 1, TOUCH_BURST do
+		firetouchinterest(root,pad,0)
+		firetouchinterest(root,pad,1)
+	end
+end
+
+---------------------------------------------------
+-- ACQUIRE ENGINE
+---------------------------------------------------
+
+local function acquireTools()
+
+	if acquisitionActive then
 		return
 	end
 
-	activeLoops[rule.pattern] = true
+	acquisitionActive = true
 
 	task.spawn(function()
 
-		while activeLoops[rule.pattern] do
+		local t0 = os.clock()
 
-			if hasTool(rule.pattern) then
-				activeLoops[rule.pattern] = nil
-				break
-			end
+		while os.clock() - t0 < ACQUIRE_WINDOW do
 
 			local root = currentRoot
 
@@ -284,73 +288,53 @@ local function startLoop(rule)
 				continue
 			end
 
-			------------------------------------------------
-			-- ALL BASES
-			------------------------------------------------
+			local completed = true
 
-			if rule.base == "ALL" then
+			for _,rule in ipairs(toolRules) do
 
-				for baseName in pairs(padsByBase) do
+				if not hasTool(rule.pattern) then
 
-					local pad = getClosestPad(baseName)
+					completed = false
 
-					if pad then
-						for i = 1, TOUCH_BURST do
+					------------------------------------------------
+					-- ALL BASES
+					------------------------------------------------
+
+					if rule.base == "ALL" then
+
+						for baseName in pairs(padsByBase) do
+
+							local pad = getClosestPad(baseName)
+
+							if pad then
+								tap(root,pad)
+							end
+						end
+
+					------------------------------------------------
+					-- SINGLE BASE
+					------------------------------------------------
+
+					else
+
+						local pad = getClosestPad(rule.base)
+
+						if pad then
 							tap(root,pad)
 						end
 					end
 				end
+			end
 
-			------------------------------------------------
-			-- SINGLE BASE
-			------------------------------------------------
-
-			else
-
-				local pad = getClosestPad(rule.base)
-
-				if pad then
-					for i = 1, TOUCH_BURST do
-						tap(root,pad)
-					end
-				end
+			-- ⚡ stop instantly when complete
+			if completed then
+				break
 			end
 
 			RunService.Heartbeat:Wait()
 		end
-	end)
-end
 
----------------------------------------------------
--- START ALL
----------------------------------------------------
-
-local function startAll()
-
-	for _,rule in ipairs(toolRules) do
-
-		if not hasTool(rule.pattern) then
-			startLoop(rule)
-		end
-	end
-end
-
----------------------------------------------------
--- ⚡ GUIDE EVENT BURST
----------------------------------------------------
-
-local function burstWindow()
-
-	task.spawn(function()
-
-		local t0 = os.clock()
-
-		while os.clock() - t0 < BURST_TIME do
-
-			startAll()
-
-			RunService.Heartbeat:Wait()
-		end
+		acquisitionActive = false
 	end)
 end
 
@@ -363,18 +347,14 @@ local GuideEvent = workspace:FindFirstChild("GuideEvent",true)
 if GuideEvent and GuideEvent:IsA("RemoteEvent") then
 
 	local old
+
 	old = hookmetamethod(game,"__namecall",function(self,...)
 
 		local method = getnamecallmethod()
 
 		if self == GuideEvent and method == "FireServer" then
 
-			task.defer(function()
-
-				-- starts BEFORE respawn fully settles
-				burstWindow()
-
-			end)
+			task.defer(acquireTools)
 		end
 
 		return old(self,...)
@@ -382,43 +362,18 @@ if GuideEvent and GuideEvent:IsA("RemoteEvent") then
 end
 
 ---------------------------------------------------
--- CHARACTERADDED FALLBACK
+-- RESPAWN
 ---------------------------------------------------
 
 LocalPlayer.CharacterAdded:Connect(function()
 
-	-- reset dead loops
-	table.clear(activeLoops)
-
-	burstWindow()
-end)
-
----------------------------------------------------
--- AUTO RECOVERY
----------------------------------------------------
-
-task.spawn(function()
-
-	while true do
-
-		for _,rule in ipairs(toolRules) do
-
-			if not hasTool(rule.pattern) then
-
-				if not activeLoops[rule.pattern] then
-					startLoop(rule)
-				end
-			end
-		end
-
-		task.wait(RECOVERY_INTERVAL)
-	end
+	task.defer(acquireTools)
 end)
 
 ---------------------------------------------------
 -- INITIAL START
 ---------------------------------------------------
 
-startAll()
+task.defer(acquireTools)
 
-print("⚡ RTX Quantum Tool Grabber V3 Loaded")
+print("⚡ RTX Tool Grabber V4 Loaded")

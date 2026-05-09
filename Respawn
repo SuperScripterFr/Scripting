@@ -1,122 +1,117 @@
--- ⚡ QUANTUM RESPAWN CORE (CLEAN FINAL)
+-- ⚡ QUANTUM FRAME-PERFECT RESPAWN V2
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UIS = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
-local GuideEvent = workspace:FindFirstChild("Guide", true)
+local GuideEvent = ReplicatedStorage:FindFirstChild("Guide")
 
 local active = false
 local firing = false
 
-local characterConn
+local TOGGLE_KEY = Enum.KeyCode.R
 
----------------------------------------------------
--- ⚡ FIRE ENGINE (FRAME-SYNCED BUT SAFE)
----------------------------------------------------
+--========================================
+-- ⚡ FRAME PERFECT FIRE
+--========================================
 local function fireRespawn()
 
 	if firing then return end
 	firing = true
 
+	local attempts = 0
+	local success = false
+
 	local function attempt()
-		pcall(function()
+		if success then return end
+
+		local ok = pcall(function()
 			if GuideEvent then
 				GuideEvent:FireServer()
 			else
 				player:LoadCharacter()
 			end
 		end)
+
+		if ok then
+			success = true
+		end
 	end
 
+	-- ⚡ FIRST SHOT (INSTANT)
 	attempt()
 
+	-- ⚡ FRAME-SYNCED FOLLOW UPS (NOT TIME BASED)
 	RunService.PreSimulation:Wait()
 	attempt()
 
 	RunService.PostSimulation:Wait()
 	attempt()
 
-	for _ = 1, 2 do
+	-- ⚡ FINAL SAFETY BURST
+	for i = 1,2 do
 		RunService.PreSimulation:Wait()
 		attempt()
 	end
 
-	task.delay(0.15, function()
+	-- reset
+	task.delay(0.15,function()
 		firing = false
 	end)
 end
 
----------------------------------------------------
--- ⚡ CHARACTER PIPELINE (NO STACKING)
----------------------------------------------------
+--========================================
+-- ⚡ CHARACTER HOOK
+--========================================
 local function hookCharacter(char)
 
-	local hum = char:WaitForChild("Humanoid", 2)
+	local hum = char:WaitForChild("Humanoid",1)
 	if not hum then return end
 
 	local triggered = false
 
+	-- ⚡ PRE-DEATH WINDOW (CRITICAL)
 	hum.HealthChanged:Connect(function(hp)
-		if not active or triggered then return end
-		if hp <= 6 then
+		if active and not triggered and hp <= 6 then
 			triggered = true
 			fireRespawn()
 		end
 	end)
 
+	-- ⚡ FALLBACK
 	hum.Died:Connect(function()
-		if not active or triggered then return end
-		triggered = true
-		fireRespawn()
-	end)
-end
-
----------------------------------------------------
--- ⚡ SINGLE CONNECTION MANAGER
----------------------------------------------------
-local function bindCharacterListener()
-
-	if characterConn then
-		characterConn:Disconnect()
-	end
-
-	characterConn = player.CharacterAdded:Connect(function(char)
-		if active then
-			hookCharacter(char)
+		if active and not triggered then
+			triggered = true
+			fireRespawn()
 		end
 	end)
-
-	if player.Character and active then
-		hookCharacter(player.Character)
-	end
 end
 
----------------------------------------------------
--- ⚡ STATE CONTROL
----------------------------------------------------
+--========================================
+-- ⚡ TOGGLE
+--========================================
 local function setState(state)
-
 	active = state
 
 	if active then
-		bindCharacterListener()
-	else
-		if characterConn then
-			characterConn:Disconnect()
-			characterConn = nil
+		print("⚡ Respawn ON")
+
+		player.CharacterAdded:Connect(hookCharacter)
+
+		if player.Character then
+			hookCharacter(player.Character)
 		end
+	else
+		print("⚡ Respawn OFF")
 	end
 end
 
----------------------------------------------------
--- ⚡ INPUT (KEYBOARD)
----------------------------------------------------
-UIS.InputBegan:Connect(function(input, gpe)
-	if gpe then return end
-
-	if input.KeyCode == Enum.KeyCode.R then
+UIS.InputBegan:Connect(function(i,g)
+	if not g and i.KeyCode == TOGGLE_KEY then
 		setState(not active)
 	end
 end)
+
+print("⚡ Frame Perfect Respawn Loaded")

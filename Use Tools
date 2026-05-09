@@ -35,7 +35,7 @@ end
 local function stroke(i,thick)
 	local s = Instance.new("UIStroke")
 	s.Color = Theme.Stroke
-	s.Thickness = thick or 1
+	s.Thickness = thick or 4
 	s.Parent = i
 end
 
@@ -382,7 +382,7 @@ toggle.Position = UDim2.fromScale(0.98,0.55)
 toggle.AnchorPoint = Vector2.new(1,0.5)
 
 toggle.Text = "USE TOOLS: OFF"
-toggle.Font = Enum.Font.GothamBold
+toggle.Font = Enum.Font.Code
 toggle.TextSize = 15
 
 toggle.TextColor3 = Theme.Text

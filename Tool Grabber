@@ -200,8 +200,18 @@ end
 
 Tycoons.DescendantAdded:Connect(function(obj)
 
-	if obj:IsA("BasePart") then
-		registerPad(obj)
+	if not obj:IsA("BasePart") then
+		return
+	end
+
+	registerPad(obj)
+
+	------------------------------------------------
+	-- ⚡ NEW GIVER DETECTED
+	------------------------------------------------
+
+	if currentCharacter then
+		task.defer(acquireTools)
 	end
 end)
 
@@ -264,6 +274,51 @@ local function tap(root,pad)
 end
 
 ---------------------------------------------------
+-- BUILD PAD WAVE
+---------------------------------------------------
+
+local function buildPadWave()
+
+	local wave = {}
+
+	for _,rule in ipairs(toolRules) do
+
+		if not hasTool(rule.pattern) then
+
+			------------------------------------------------
+			-- ALL BASES
+			------------------------------------------------
+
+			if rule.base == "ALL" then
+
+				for baseName in pairs(padsByBase) do
+
+					local pad = getClosestPad(baseName)
+
+					if pad then
+						wave[pad] = true
+					end
+				end
+
+			------------------------------------------------
+			-- SINGLE BASE
+			------------------------------------------------
+
+			else
+
+				local pad = getClosestPad(rule.base)
+
+				if pad then
+					wave[pad] = true
+				end
+			end
+		end
+	end
+
+	return wave
+end
+
+---------------------------------------------------
 -- ACQUIRE ENGINE
 ---------------------------------------------------
 
@@ -288,47 +343,26 @@ local function acquireTools()
 				continue
 			end
 
-			local completed = true
+			------------------------------------------------
+			-- BUILD ACQUISITION WAVE
+			------------------------------------------------
 
-			for _,rule in ipairs(toolRules) do
+			local wave = buildPadWave()
 
-				if not hasTool(rule.pattern) then
+			------------------------------------------------
+			-- COMPLETE CHECK
+			------------------------------------------------
 
-					completed = false
-
-					------------------------------------------------
-					-- ALL BASES
-					------------------------------------------------
-
-					if rule.base == "ALL" then
-
-						for baseName in pairs(padsByBase) do
-
-							local pad = getClosestPad(baseName)
-
-							if pad then
-								tap(root,pad)
-							end
-						end
-
-					------------------------------------------------
-					-- SINGLE BASE
-					------------------------------------------------
-
-					else
-
-						local pad = getClosestPad(rule.base)
-
-						if pad then
-							tap(root,pad)
-						end
-					end
-				end
+			if not next(wave) then
+				break
 			end
 
-			-- ⚡ stop instantly when complete
-			if completed then
-				break
+			------------------------------------------------
+			-- TOUCH EVERYTHING SAME FRAME
+			------------------------------------------------
+
+			for pad in pairs(wave) do
+				tap(root,pad)
 			end
 
 			RunService.Heartbeat:Wait()

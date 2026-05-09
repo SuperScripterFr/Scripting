@@ -110,25 +110,6 @@ local function setState(state)
 	end
 end
 
-local gui = Instance.new("ScreenGui")
-gui.Name = "RespawnUI"
-gui.ResetOnSpawn = false
-gui.Parent = game:GetService("CoreGui")
-
-local btn = Instance.new("TextButton")
-btn.Size = UDim2.fromOffset(160, 60)
-btn.Position = UDim2.new(1, -180, 0.5, 0)
-btn.TextColor3 = Color3.fromRGB(255,0,0)
-btn.BackgroundColor3 = Color3.fromRGB(0,0,0)
-btn.Text = "RESPAWN: OFF"
-btn.Font = Enum.Font.Code
-btn.Parent = gui
-
-btn.MouseButton1Click:Connect(function()
-	setState(not active)
-	btn.Text = active and "RESPAWN: ON" or "RESPAWN: OFF"
-end)
-
 ---------------------------------------------------
 -- ⚡ INPUT (KEYBOARD)
 ---------------------------------------------------

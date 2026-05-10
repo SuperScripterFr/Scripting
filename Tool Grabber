@@ -200,18 +200,42 @@ end
 
 Tycoons.DescendantAdded:Connect(function(obj)
 
-	if obj:IsA("TouchTransmitter") then
+	------------------------------------------------
+	-- ⚡ TOUCHTRANSMITTER DETECTED
+	------------------------------------------------
 
-		local pad = obj.Parent
-
-		if pad and pad:IsA("BasePart") then
-
-			registerPad(pad)
-
-			-- ⚡ immediate acquisition retry
-			task.defer(acquireTools)
-		end
+	if not obj:IsA("TouchTransmitter") then
+		return
 	end
+
+	local pad = obj.Parent
+
+	if not pad or not pad:IsA("BasePart") then
+		return
+	end
+
+	local giver = pad.Parent
+
+	if not giver or not giver.Name:find("GearGiver1") then
+		return
+	end
+
+	------------------------------------------------
+	-- ⚡ REGISTER NEW PAD
+	------------------------------------------------
+
+	registerPad(pad)
+
+	------------------------------------------------
+	-- ⚡ INSTANT RETRY
+	------------------------------------------------
+
+	task.spawn(function()
+
+		RunService.PreSimulation:Wait()
+
+		acquireTools()
+	end)
 end)
 
 ---------------------------------------------------

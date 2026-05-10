@@ -200,18 +200,17 @@ end
 
 Tycoons.DescendantAdded:Connect(function(obj)
 
-	if not obj:IsA("BasePart") then
-		return
-	end
+	if obj:IsA("TouchTransmitter") then
 
-	registerPad(obj)
+		local pad = obj.Parent
 
-	------------------------------------------------
-	-- ⚡ NEW GIVER DETECTED
-	------------------------------------------------
+		if pad and pad:IsA("BasePart") then
 
-	if currentCharacter then
-		task.defer(acquireTools)
+			registerPad(pad)
+
+			-- ⚡ immediate acquisition retry
+			task.defer(acquireTools)
+		end
 	end
 end)
 
@@ -339,7 +338,8 @@ local function acquireTools()
 			local root = currentRoot
 
 			if not root then
-				RunService.Heartbeat:Wait()
+				RunService.PreSimulation:Wait()
+				RunService.PostSimulation:Wait()
 				continue
 			end
 
@@ -361,11 +361,16 @@ local function acquireTools()
 			-- TOUCH EVERYTHING SAME FRAME
 			------------------------------------------------
 
-			for pad in pairs(wave) do
-				tap(root,pad)
+			for _ = 1, TOUCH_BURST do
+				for pad in pairs(wave) do
+					tap(root,pad)
+				end
+
+				RunService.PreSimulation:Wait()
 			end
 
-			RunService.Heartbeat:Wait()
+			RunService.PreSimulation:Wait()
+			RunService.PostSimulation:Wait()
 		end
 
 		acquisitionActive = false

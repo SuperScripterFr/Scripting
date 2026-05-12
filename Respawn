@@ -1,4 +1,4 @@
--- ⚡ QUANTUM RESPAWN V7 (IMMORTAL CONTROLLER CORE)
+-- ⚡ QUANTUM RESPAWN
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")

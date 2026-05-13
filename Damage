@@ -1,71 +1,68 @@
--- ⚔️ HITBOX ASSIST (FINAL - PERFORMANCE + REAL IMPACT)
+-- ⚔️ Hitbox Expander V2 (Optimized)
 
-_G.HitboxSize = 12
+_G.HitboxSize = 10
 _G.Enabled = true
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-
 local LocalPlayer = Players.LocalPlayer
 
-local targets = {}
-local overlap = OverlapParams.new()
-overlap.FilterType = Enum.RaycastFilterType.Include
+local modified = {}
 
--- BUILD TARGET LIST (CACHED)
-local function buildTargets()
+local function applyHitbox(player)
+	if player == LocalPlayer then return end
+	if not player.Character then return end
+	
+	local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+	
+	if modified[hrp] then return end
+	modified[hrp] = true
+	
+	pcall(function()
+		hrp.Size = Vector3.new(_G.HitboxSize, _G.HitboxSize, _G.HitboxSize)
+		hrp.Transparency = 0.67
+		hrp.BrickColor = Color3.fromRGB(0,0,0)
+		hrp.Material = Enum.Material.SmoothPlastic
+		hrp.CanCollide = false
+		hrp.CanQuery = true -- Secret
+		hrp.canTouch = false
+		
+		local box = Instance.new("SelectionBox")
+		box.Name = "HitboxVisual"
+		box.Adornee = hrp
+		box.LineThickness = 1
+		box.Color3 = Color3.fromRGB(255,0,0)
+		box.SurfaceTransparency = 1
+		box.Parent = hrp
+	end)
+end
 
-	local myChar = LocalPlayer.Character
-	if not myChar then return end
-
-	local myRoot = myChar:FindFirstChild("HumanoidRootPart")
-	if not myRoot then return end
-
-	table.clear(targets)
-
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player ~= LocalPlayer then
-
-			local char = player.Character
-			local hrp = char and char:FindFirstChild("HumanoidRootPart")
-
-			if hrp then
-				local dist = (hrp.Position - myRoot.Position).Magnitude
-
-				if dist <= (30 + _G.HitboxSize) then
-					table.insert(targets, char)
-				end
-			end
-		end
+local function updatePlayers()
+	for _,player in ipairs(Players:GetPlayers()) do
+		applyHitbox(player)
 	end
 end
 
--- 🔥 EXPANDED QUERY (CLEAN + FILTERED)
-local function getExpandedParts(char)
-
-	local hrp = char and char:FindFirstChild("HumanoidRootPart")
-	if not hrp then return end
-
-	overlap.FilterDescendantsInstances = {char}
-
-	return workspace:GetPartBoundsInBox(
-		hrp.CFrame,
-		Vector3.new(_G.HitboxSize, _G.HitboxSize, _G.HitboxSize),
-		overlap
-	)
-end
-
--- UPDATE LOOP (FAST + LIGHT)
-RunService.PreSimulation:Connect(function()
-	if not _G.Enabled then return end
-	buildTargets()
+Players.PlayerAdded:Connect(function(player)
+	player.CharacterAdded:Connect(function()
+		task.wait(0.5)
+		applyHitbox(player)
+	end)
 end)
 
--- EXPORT (used by aura)
-_G.GetExpandedTargets = function()
-	return targets
+for _,player in ipairs(Players:GetPlayers()) do
+	if player ~= LocalPlayer then
+		player.CharacterAdded:Connect(function()
+			task.wait(0.5)
+			applyHitbox(player)
+		end)
+	end
 end
 
-_G.GetExpandedParts = getExpandedParts
+RunService.Heartbeat:Connect(function()
+	if not _G.Enabled then return end
+	updatePlayers()
+end)
 
-print("⚔️ Hitbox Assist (Final) Loaded")
+print("⚔️ Optimized Hitbox Expander Loaded")

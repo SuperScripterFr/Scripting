@@ -1,4 +1,9 @@
--- ⚡ QUANTUM FRAME-PERFECT RESPAWN V2 (STABLE CORE + NO LEAKS)
+-- ⚡ QUANTUM FRAME-PERFECT RESPAWN V2
+-- PERFECTED STABLE CORE
+
+----------------------------------------------------
+-- SERVICES
+----------------------------------------------------
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -17,48 +22,67 @@ local firing = false
 
 local TOGGLE_KEY = Enum.KeyCode.R
 
--- ⚡ CONNECTION REGISTRY (THE FIX)
-local Connections = {}
-local currentHumanoid
-
 ----------------------------------------------------
--- ⚡ SAFE CONNECT
+-- CONNECTION REGISTRIES
 ----------------------------------------------------
 
-local function track(conn)
-	table.insert(Connections, conn)
+-- ⚡ character-only connections
+local CharacterConnections = {}
+
+-- ⚡ persistent connections
+local PersistentConnections = {}
+
+----------------------------------------------------
+-- ⚡ TRACKERS
+----------------------------------------------------
+
+local function trackCharacter(conn)
+	table.insert(CharacterConnections, conn)
+	return conn
+end
+
+local function trackPersistent(conn)
+	table.insert(PersistentConnections, conn)
 	return conn
 end
 
 ----------------------------------------------------
--- ⚡ DISCONNECT ALL (CORE FIX)
+-- ⚡ CLEAN CHARACTER CONNECTIONS ONLY
 ----------------------------------------------------
 
-local function disconnectAll()
-	for i, conn in ipairs(Connections) do
+local function disconnectCharacterConnections()
+
+	for _, conn in ipairs(CharacterConnections) do
 		if conn and conn.Connected then
 			conn:Disconnect()
 		end
 	end
-	table.clear(Connections)
-	currentHumanoid = nil
+
+	table.clear(CharacterConnections)
 end
 
 ----------------------------------------------------
--- ⚡ FIRE RESPAWN CORE (UNCHANGED FEEL)
+-- ⚡ FRAME PERFECT FIRE
 ----------------------------------------------------
 
 local function fireRespawn()
 
-	if firing then return end
+	if firing then
+		return
+	end
+
 	firing = true
 
 	local success = false
 
 	local function attempt()
-		if success then return end
+
+		if success then
+			return
+		end
 
 		local ok = pcall(function()
+
 			if GuideEvent then
 				GuideEvent:FireServer()
 			else
@@ -71,7 +95,15 @@ local function fireRespawn()
 		end
 	end
 
+	------------------------------------------------
+	-- ⚡ INSTANT SHOT
+	------------------------------------------------
+
 	attempt()
+
+	------------------------------------------------
+	-- ⚡ FRAME-SYNCED BURSTS
+	------------------------------------------------
 
 	RunService.PreSimulation:Wait()
 	attempt()
@@ -84,47 +116,81 @@ local function fireRespawn()
 		attempt()
 	end
 
+	------------------------------------------------
+	-- ⚡ RESET
+	------------------------------------------------
+
 	task.delay(0.12, function()
 		firing = false
 	end)
 end
 
 ----------------------------------------------------
--- ⚡ CHARACTER HOOK (NO STACK VERSION)
+-- ⚡ CHARACTER HOOK
 ----------------------------------------------------
 
 local function hookCharacter(char)
 
-	-- ⚡ IMPORTANT: wipe old hooks first
-	disconnectAll()
+	------------------------------------------------
+	-- ⚡ WIPE OLD CHARACTER HOOKS ONLY
+	------------------------------------------------
+
+	disconnectCharacterConnections()
 
 	local hum = char:WaitForChild("Humanoid", 1)
-	if not hum then return end
 
-	currentHumanoid = hum
+	if not hum then
+		return
+	end
 
 	local triggered = false
 
-	track(hum.HealthChanged:Connect(function(hp)
-		if not active or triggered then return end
+	------------------------------------------------
+	-- ⚡ PRE-DEATH WINDOW
+	------------------------------------------------
+
+	trackCharacter(hum.HealthChanged:Connect(function(hp)
+
+		if not active then
+			return
+		end
+
+		if triggered then
+			return
+		end
+
 		if hp <= 6 then
 			triggered = true
 			fireRespawn()
 		end
 	end))
 
-	track(hum.Died:Connect(function()
-		if not active or triggered then return end
+	------------------------------------------------
+	-- ⚡ FALLBACK
+	------------------------------------------------
+
+	trackCharacter(hum.Died:Connect(function()
+
+		if not active then
+			return
+		end
+
+		if triggered then
+			return
+		end
+
 		triggered = true
+
 		fireRespawn()
 	end))
 end
 
 ----------------------------------------------------
--- ⚡ SINGLE CHARACTER LISTENER (NO STACKING)
+-- ⚡ SINGLE PERSISTENT CHARACTER LISTENER
 ----------------------------------------------------
 
-track(player.CharacterAdded:Connect(function(char)
+trackPersistent(player.CharacterAdded:Connect(function(char)
+
 	if active then
 		hookCharacter(char)
 	end
@@ -139,6 +205,7 @@ local function setState(state)
 	active = state
 
 	if active then
+
 		print("⚡ Respawn ON")
 
 		if player.Character then
@@ -146,8 +213,10 @@ local function setState(state)
 		end
 
 	else
+
 		print("⚡ Respawn OFF")
-		disconnectAll()
+
+		disconnectCharacterConnections()
 	end
 end
 
@@ -156,7 +225,11 @@ end
 ----------------------------------------------------
 
 UIS.InputBegan:Connect(function(i, g)
-	if g then return end
+
+	if g then
+		return
+	end
+
 	if i.KeyCode == TOGGLE_KEY then
 		setState(not active)
 	end
@@ -166,4 +239,4 @@ end)
 -- INIT
 ----------------------------------------------------
 
-print("⚡ Frame Perfect Respawn V2 (Leak-Free Core) Loaded")
+print("⚡ Quantum Frame-Perfect Respawn V2 Loaded")

@@ -1,0 +1,641 @@
+------------------------------------------------------------
+-- SERVICES
+------------------------------------------------------------
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+
+local player = Players.LocalPlayer
+
+------------------------------------------------------------
+-- THEME
+------------------------------------------------------------
+
+local Theme = {
+	Accent = Color3.fromRGB(0,0,0),
+	Glass  = Color3.fromRGB(100,0,0),
+	Text   = Color3.fromRGB(255,0,0),
+	Stroke = Color3.fromRGB(255,0,0)
+}
+
+local ANIM = TweenInfo.new(
+	0.35,
+	Enum.EasingStyle.Quart,
+	Enum.EasingDirection.Out
+)
+
+local function round(i,r)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0,r or 14)
+	c.Parent = i
+end
+
+local function stroke(i,thick)
+	local s = Instance.new("UIStroke")
+	s.Color = Theme.Stroke
+	s.Thickness = thick or 4
+	s.Parent = i
+end
+
+------------------------------------------------------------
+-- CONFIG
+------------------------------------------------------------
+
+local APS = 100
+local PULSE_INTERVAL = 1 / APS
+
+local RESPAWN_BURST_TIME = 1.0
+local TOUCH_ASSIST_RANGE = 14
+local TOUCH_ASSIST_BURST = 1
+
+------------------------------------------------------------
+-- STATE
+------------------------------------------------------------
+
+local active = false
+local toolsCache = {}
+
+local currentCharacter
+local currentRoot
+
+local lastPulse = 0
+local burstActive = false
+
+------------------------------------------------------------
+-- CHARACTER TRACKING
+------------------------------------------------------------
+
+local function bindCharacter(char)
+
+	currentCharacter = char
+	currentRoot = nil
+
+	if not char then
+		return
+	end
+
+	currentRoot = char:FindFirstChild("HumanoidRootPart")
+
+		if not currentRoot then
+		task.spawn(function()
+
+			local hrp = char:WaitForChild("HumanoidRootPart",5)
+
+			if currentCharacter == char then
+				currentRoot = hrp
+			end
+		end)
+	end
+end
+
+------------------------------------------------------------
+-- TOOL SELECTION
+------------------------------------------------------------
+
+local MAX_RANDOM_TOOLS = 2
+
+local PRIORITY_TOOLS = {
+	"Fists",
+	"Energy Sword",
+	"Axe",
+	"Staff",
+}
+
+------------------------------------------------------------
+-- SELECTED TOOL STATE
+------------------------------------------------------------
+
+local selectedTools = {}
+
+------------------------------------------------------------
+-- PRIORITY CHECK
+------------------------------------------------------------
+
+local function matchesPriority(name)
+
+	name = string.lower(name)
+
+	for _,pattern in ipairs(PRIORITY_TOOLS) do
+
+		if string.find(name,string.lower(pattern)) then
+			return true
+		end
+	end
+
+	return false
+end
+
+------------------------------------------------------------
+-- BUILD SELECTION (STRICT PRIORITY ORDER)
+------------------------------------------------------------
+
+local function buildToolSelection()
+
+	table.clear(selectedTools)
+
+	local backpack = player:FindFirstChildOfClass("Backpack")
+	local char = currentCharacter
+
+	if not backpack or not char then
+		return
+	end
+
+	--------------------------------------------------------
+	-- BUILD LOOKUP
+	--------------------------------------------------------
+
+	local allTools = {}
+
+	for _,obj in ipairs(backpack:GetChildren()) do
+		if obj:IsA("Tool") then
+			table.insert(allTools,obj)
+		end
+	end
+
+	for _,obj in ipairs(char:GetChildren()) do
+		if obj:IsA("Tool") then
+			table.insert(allTools,obj)
+		end
+	end
+
+	--------------------------------------------------------
+	-- STRICT PRIORITY ORDER
+	--------------------------------------------------------
+
+	for _,priorityName in ipairs(PRIORITY_TOOLS) do
+
+		for _,tool in ipairs(allTools) do
+
+			if tool.Name:lower():find(priorityName:lower()) then
+
+				if not table.find(selectedTools,tool) then
+
+					table.insert(selectedTools,tool)
+
+					if #selectedTools >= MAX_RANDOM_TOOLS then
+						return
+					end
+				end
+			end
+		end
+	end
+
+	--------------------------------------------------------
+	-- FALLBACK (ONLY IF NONE FOUND)
+	--------------------------------------------------------
+
+	if #selectedTools == 0 then
+
+		for i = 1, math.min(MAX_RANDOM_TOOLS,#allTools) do
+
+			local tool = allTools[i]
+
+			if tool then
+				table.insert(selectedTools,tool)
+			end
+		end
+	end
+end
+
+------------------------------------------------------------
+-- REFRESH ACTIVE CACHE
+------------------------------------------------------------
+
+local function refreshTools()
+
+	table.clear(toolsCache)
+
+	for _,tool in ipairs(selectedTools) do
+
+		if tool and tool.Parent then
+			table.insert(toolsCache,tool)
+		end
+	end
+end
+
+------------------------------------------------------------
+-- EQUIP ONLY SELECTED
+------------------------------------------------------------
+
+local lastEquipCheck = 0
+local EQUIP_INTERVAL = 0.08
+
+local function equipTools(force)
+
+	local now = os.clock()
+
+	if not force and now - lastEquipCheck < EQUIP_INTERVAL then
+		return
+	end
+
+	lastEquipCheck = now
+
+	local char = currentCharacter
+	local backpack = player:FindFirstChildOfClass("Backpack")
+
+	if not char or not backpack then
+		return
+	end
+
+	--------------------------------------------------------
+	-- BUILD SELECTION IF EMPTY
+	--------------------------------------------------------
+
+	if #selectedTools == 0 then
+		buildToolSelection()
+	end
+
+	--------------------------------------------------------
+	-- UNEQUIP NON-SELECTED
+	--------------------------------------------------------
+
+	for _,tool in ipairs(char:GetChildren()) do
+
+		if tool:IsA("Tool") then
+
+			if not table.find(selectedTools,tool) then
+				tool.Parent = backpack
+			end
+		end
+	end
+
+	--------------------------------------------------------
+	-- EQUIP ONLY SELECTED
+	--------------------------------------------------------
+
+	for _,tool in ipairs(selectedTools) do
+
+		if tool and tool.Parent == backpack then
+			tool.Parent = char
+		end
+	end
+
+	refreshTools()
+end
+
+------------------------------------------------------------
+-- UNEQUIP
+------------------------------------------------------------
+
+local function unequipTools()
+
+	local char = currentCharacter
+	local backpack = player:FindFirstChildOfClass("Backpack")
+
+	if not char or not backpack then
+		return
+	end
+
+	for _,tool in ipairs(char:GetChildren()) do
+		if tool:IsA("Tool") then
+			tool.Parent = backpack
+		end
+	end
+
+	table.clear(toolsCache)
+	table.clear(selectedTools)
+end
+
+------------------------------------------------------------
+-- TOUCH HELPER
+------------------------------------------------------------
+
+local function getTouchPart(tool)
+
+	for _,obj in ipairs(tool:GetDescendants()) do
+		if obj:IsA("TouchTransmitter") then
+			local parent = obj.Parent
+
+			if parent and parent:IsA("BasePart") then
+				return parent
+			end
+		end
+	end
+end
+
+local function getClosestTarget()
+
+	local myRoot = currentRoot
+
+	if not myRoot then
+		return nil
+	end
+
+	local closest
+	local bestDist = TOUCH_ASSIST_RANGE
+
+	for _,plr in ipairs(Players:GetPlayers()) do
+
+		if plr ~= player then
+
+			local char = plr.Character
+
+			if char then
+
+				local hum = char:FindFirstChild("Humanoid")
+				local root = char:FindFirstChild("HumanoidRootPart")
+
+				if hum and root and hum.Health > 0 then
+
+					local dist = (root.Position - myRoot.Position).Magnitude
+
+					if dist < bestDist then
+						bestDist = dist
+						closest = root
+					end
+				end
+			end
+		end
+	end
+
+	return closest
+end
+
+local function touchAssist()
+
+	local target = getClosestTarget()
+
+	if not target then
+		return
+	end
+
+	for i = 1,#toolsCache do
+
+		local tool = toolsCache[i]
+
+		if tool and tool.Parent then
+
+			local touchPart = getTouchPart(tool)
+
+			if touchPart then
+
+				for _ = 1, TOUCH_ASSIST_BURST do
+					firetouchinterest(touchPart,target,0)
+					firetouchinterest(touchPart,target,1)
+				end
+			end
+		end
+	end
+end
+
+------------------------------------------------------------
+-- ACTIVATE
+------------------------------------------------------------
+
+local function activateTools()
+
+	for i = 1,#toolsCache do
+
+		local tool = toolsCache[i]
+
+		if tool and tool.Parent then
+			pcall(tool.Activate,tool)
+		end
+	end
+end
+
+------------------------------------------------------------
+-- DAMAGE CORE
+------------------------------------------------------------
+
+local function damagePulse()
+
+	activateTools()
+
+	touchAssist()
+end
+
+------------------------------------------------------------
+-- RESPAWN BURST
+------------------------------------------------------------
+
+local function beginBurst()
+
+	if burstActive then
+		return
+	end
+
+	burstActive = true
+
+	task.spawn(function()
+
+		local t0 = os.clock()
+
+		-- ⚡ equip instantly
+		equipTools(true)
+
+		-- ⚡ stabilize replication
+		RunService.Heartbeat:Wait()
+
+		while active and os.clock() - t0 < RESPAWN_BURST_TIME do
+
+			equipTools()
+			damagePulse()
+
+			RunService.Heartbeat:Wait()
+		end
+
+		burstActive = false
+	end)
+end
+
+------------------------------------------------------------
+-- MAIN ENGINE
+------------------------------------------------------------
+
+RunService.PreSimulation:Connect(function()
+
+	if not active then
+		return
+	end
+
+	local now = os.clock()
+
+	if now - lastPulse < PULSE_INTERVAL then
+		return
+	end
+
+	lastPulse = now
+
+	equipTools()
+	damagePulse()
+end)
+
+------------------------------------------------------------
+-- RESPAWN
+------------------------------------------------------------
+
+------------------------------------------------------------
+-- RESPAWN REBUILD
+------------------------------------------------------------
+
+player.CharacterAdded:Connect(function(char)
+
+	bindCharacter(char)
+
+	--------------------------------------------------------
+	-- CLEAR OLD DEAD TOOL REFERENCES
+	--------------------------------------------------------
+
+	table.clear(selectedTools)
+	table.clear(toolsCache)
+
+	--------------------------------------------------------
+	-- WAIT FOR BACKPACK TO RESTABILIZE
+	--------------------------------------------------------
+
+	task.defer(function()
+
+		RunService.Heartbeat:Wait()
+		RunService.Heartbeat:Wait()
+
+		if not active then
+			return
+		end
+
+		----------------------------------------------------
+		-- REBUILD + EQUIP
+		----------------------------------------------------
+
+		buildToolSelection()
+
+		equipTools(true)
+
+		refreshTools()
+
+		beginBurst()
+	end)
+end)
+
+------------------------------------------------------------
+-- UI
+------------------------------------------------------------
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "RTXUseTools"
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Global
+gui.Parent = game:GetService("CoreGui")
+
+local toggle = Instance.new("TextButton",gui)
+
+toggle.Size = UDim2.fromOffset(180,64)
+toggle.Position = UDim2.fromScale(0.98,0.55)
+toggle.AnchorPoint = Vector2.new(1,0.5)
+
+toggle.Text = "USE TOOLS: OFF"
+toggle.Font = Enum.Font.Code
+toggle.TextSize = 15
+
+toggle.TextColor3 = Theme.Text
+toggle.BackgroundColor3 = Theme.Glass
+toggle.BackgroundTransparency = 0.08
+
+toggle.AutoButtonColor = false
+toggle.Active = true
+toggle.Draggable = true
+
+toggle.ZIndex = 9999
+
+round(toggle,16)
+stroke(toggle,2)
+
+local glow = Instance.new("UIStroke",toggle)
+glow.Color = Theme.Accent
+glow.Thickness = 2
+glow.Transparency = 0.6
+
+------------------------------------------------------------
+-- UI FX
+------------------------------------------------------------
+
+toggle.MouseEnter:Connect(function()
+
+	TweenService:Create(toggle,ANIM,{
+		Size = UDim2.fromOffset(190,70)
+	}):Play()
+
+	TweenService:Create(glow,ANIM,{
+		Transparency = 0.25
+	}):Play()
+end)
+
+toggle.MouseLeave:Connect(function()
+
+	TweenService:Create(toggle,ANIM,{
+		Size = UDim2.fromOffset(180,64)
+	}):Play()
+
+	TweenService:Create(glow,ANIM,{
+		Transparency = 0.6
+	}):Play()
+end)
+
+------------------------------------------------------------
+-- TEXT
+------------------------------------------------------------
+
+local function updateText()
+	toggle.Text = active and "USE TOOLS: ON" or "USE TOOLS: OFF"
+end
+
+------------------------------------------------------------
+-- TOGGLE
+------------------------------------------------------------
+
+local function setState(state)
+
+	active = state
+
+	updateText()
+
+	if active then
+
+		-- ⚡ instant equip
+		equipTools(true)
+
+		-- ⚡ stable first pulse
+		task.defer(function()
+
+			RunService.Heartbeat:Wait()
+
+			if active then
+				refreshTools()
+				damagePulse()
+			end
+		end)
+
+	else
+
+		unequipTools()
+	end
+end
+
+------------------------------------------------------------
+-- INPUT
+------------------------------------------------------------
+
+toggle.MouseButton1Click:Connect(function()
+	setState(not active)
+end)
+
+UIS.InputBegan:Connect(function(i,g)
+
+	if g then
+		return
+	end
+
+	if i.KeyCode == Enum.KeyCode.E then
+		setState(not active)
+	end
+end)
+
+------------------------------------------------------------
+-- INIT
+------------------------------------------------------------
+
+updateText()
+
+print("⚡ RTX Use Tools V5 Loaded")

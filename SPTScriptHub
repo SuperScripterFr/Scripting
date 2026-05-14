@@ -733,14 +733,14 @@ local function createActionButton(textLabel, url)
 				tw(actBtn, {Size = UDim2.new(0, 160, 1, 0)}, 0.12):Play()
 				wait(0.8)
 				actBtn.Text = oldText
-				actBtn.BackgroundColor3 = Color3.fromRGB(0,0,0)
+				actBtn.BackgroundColor3 = DEFAULT_THEME.Accent
 			else
 				warn("[RTXHub] Action failed:", res)
 				actBtn.Text = "Error"
 				actBtn.BackgroundColor3 = Color3.fromRGB(160,50,50)
 				wait(1.2)
 				actBtn.Text = oldText
-				actBtn.BackgroundColor3 = Color3.fromRGB(0,0,0)
+				actBtn.BackgroundColor3 = DEFAULT_THEME.Accent
 			end
 			running = false
 		end)
@@ -789,7 +789,7 @@ local tools = {
 	{"No Cooldown", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/No%20Cooldown"},
 	{"Event Spam", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Insta-Kill"},
 	{"Use Tools Normal", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Use%20Tools"},
-	{"Use Tools Event", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Event%20Use%20Tools"},
+	{"Use 2 Tools", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Use%202%20Tools"},
 	{"Kill Aura", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Kill%20Aura"},
 	{"Loop Tools", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Loop%20Tools"},
 	{"Float/Grip", "https://raw.githubusercontent.com/SuperScripterFr/Scripting/refs/heads/main/Grip"},

@@ -1,7 +1,7 @@
 -- ⚡ ULTRA STABLE FRAME AURA (REAL OPTIMIZATION)
 
-local RANGE = 15
-local AURA_SIZE = Vector3.new(15,15,15)
+local RANGE = 30
+local AURA_SIZE = Vector3.new(30,30,30)
 
 local TOUCH_RATE = 1 / 200
 local REMOTE_RATE = 1 / 100
@@ -142,6 +142,7 @@ RunService.PreSimulation:Connect(function()
 				local fightEvent = tool:FindFirstChild("FightEvent")
 				if fightEvent then
 					pcall(function()
+						fightEvent:FireServer()
 						fightEvent:FireServer()
 					end)
 				end

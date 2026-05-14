@@ -1,178 +1,107 @@
--- ⚡ ULTRA STABLE FRAME AURA (REAL OPTIMIZATION)
+-- CONFIG
+local auraRange = 20
+local auraSize = Vector3.new(30, 30, 30)
+local attackRate = 0.01
 
-local RANGE = 15
-local AURA_SIZE = Vector3.new(15,15,15)
-
-local TOUCH_RATE = 200
-local REMOTE_RATE = 100
-local TOUCH_BURST = 1
-
+-- SERVICES
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-
 local LocalPlayer = Players.LocalPlayer
 
--- timing
-local lastTouch = 0
-local lastRemote = 0
-
--- cache
-local cachedTarget = nil
-local lastTargetUpdate = 0
-
+-- AURA STATE
+local running = true
 local auraParams = OverlapParams.new()
 auraParams.FilterType = Enum.RaycastFilterType.Include
 
--- =========================
--- HELPERS
--- =========================
-
-local function getHRP(plr)
-	local c = plr.Character
-	return c and c:FindFirstChild("HumanoidRootPart")
+-- HELPER FUNCTIONS
+local function getChar(plr)
+    return plr and plr.Character
 end
 
-local function getTarget()
-	local now = os.clock()
+local function getHumanoidRootPart(plr)
+    local char = getChar(plr)
+    return char and char:FindFirstChild("HumanoidRootPart")
+end
 
-	-- update target every 0.1s (huge perf win)
-	if now - lastTargetUpdate < 0.1 then
-		return cachedTarget
-	end
+local function getValidTargets()
+    local myChar = getChar(LocalPlayer)
+    local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    if not myHRP then return {} end
 
-	lastTargetUpdate = now
-
-	local myRoot = getHRP(LocalPlayer)
-	if not myRoot then return end
-
-	local best, dist = nil, RANGE
-
-	for _,p in ipairs(Players:GetPlayers()) do
-		if p ~= LocalPlayer then
-			local r = getHRP(p)
-			if r then
-				local d = (r.Position - myRoot.Position).Magnitude
-				if d < dist then
-					dist = d
-					best = p.Character
-				end
-			end
-		end
-	end
-
-	cachedTarget = best
-	return best
+    local targets = {}
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local hrp = getHumanoidRootPart(player)
+            if hrp and (hrp.Position - myHRP.Position).Magnitude <= auraRange then
+                table.insert(targets, player)
+            end
+        end
+    end
+    return targets
 end
 
 local function getTouchPart(tool)
-	local t = tool:FindFirstChildWhichIsA("TouchTransmitter", true)
-	return t and t.Parent
+    local ti = tool and tool:FindFirstChildWhichIsA("TouchTransmitter", true)
+    return ti and ti.Parent
 end
 
-local function tap(part, enemyPart)
-	for i = 1, TOUCH_BURST do
-		firetouchinterest(part, enemyPart, 0)
-		firetouchinterest(part, enemyPart, 1)
-	end
+local function autoActivate(tool)
+    if not tool:IsDescendantOf(workspace) then
+        tool.Parent = getChar(LocalPlayer)
+    end
+    tool:Activate()
 end
 
--- =========================
--- PRE STEP (equip + prep)
--- =========================
+-- MAIN LOOP
+task.spawn(function()
+    while running do
+        local myChar = getChar(LocalPlayer)
+        local tools = {}
+        local targets = getValidTargets()
 
-RunService.PreSimulation:Connect(function()
+        local enemyChars = {}
+        for _, player in ipairs(targets) do
+            local char = getChar(player)
+            if char then table.insert(enemyChars, char) end
+        end
+        auraParams.FilterDescendantsInstances = enemyChars
 
-	local char = LocalPlayer.Character
-	if not char then return end
+        for _, tool in ipairs(myChar:GetChildren()) do
+            if tool:IsA("Tool") then
+                local fightEvent = tool:FindFirstChild("FightEvent")
+                local touchPart = getTouchPart(tool)
 
-	for _, tool in ipairs(char:GetChildren()) do
-		if tool:IsA("Tool") and tool.Parent ~= char then
-			tool.Parent = char
-		end
-	end
+                if fightEvent then
+                    autoActivate(tool)
+                    for _, _ in ipairs(targets) do
+                        fightEvent:FireServer()
+                    end
+                end
 
+                if touchPart then
+                    local partsInBox = workspace:GetPartBoundsInBox(
+                        touchPart.CFrame,
+                        touchPart.Size + auraSize,
+                        auraParams
+                    )
+
+                    for _, part in ipairs(partsInBox) do
+                        local model = part:FindFirstAncestorWhichIsA("Model")
+                        if model and table.find(enemyChars, model) then
+                            firetouchinterest(touchPart, part, 1)
+                            firetouchinterest(touchPart, part, 0)
+                        end
+                    end
+                end
+            end
+        end
+
+        RunService.Heartbeat:Wait(attackRate)
+    end
 end)
 
--- =========================
--- POST STEP (ACTUAL DAMAGE)
--- =========================
-RunService.PostSimulation:Connect(function()
-
-	local char = LocalPlayer.Character
-	if not char then return end
-
-	local target = getTarget()
-	if not target then return end
-
-	local partsToScan = {}
-
-	-- include real character
-	table.insert(partsToScan, target)
-	
-	-- include expanded hitbox
-	local hb = hitboxes[target]
-	if hb then
-		table.insert(partsToScan, hb.box)
-	end
-	
-	auraParams.FilterDescendantsInstances = partsToScan
-
-	local now = os.clock()
-
-	-- 🔹 GET PARTS ONCE (IMPORTANT)
-	local sampleTool = nil
-	for _,t in ipairs(char:GetChildren()) do
-		if t:IsA("Tool") then
-			sampleTool = t
-			break
-		end
-	end
-
-	if not sampleTool then return end
-
-	local touchPart = getTouchPart(sampleTool)
-	if not touchPart then return end
-
-	local parts = workspace:GetPartBoundsInBox(
-		touchPart.CFrame,
-		touchPart.Size + AURA_SIZE,
-		auraParams
-	)
-
-	-- 🔹 APPLY TO ALL TOOLS
-	for _, tool in ipairs(char:GetChildren()) do
-		if tool:IsA("Tool") then
-
-			-- REMOTE (slower, reliable)
-			if now - lastRemote >= REMOTE_RATE then
-				local fightEvent = tool:FindFirstChild("FightEvent")
-				if fightEvent then
-					pcall(function()
-						fightEvent:FireServer()
-					end)
-				end
-			end
-
-			-- TOUCH (faster)
-			if now - lastTouch >= TOUCH_RATE then
-				local tp = getTouchPart(tool)
-				if tp then
-					for _, part in ipairs(parts) do
-						tap(tp, part)
-					end
-				end
-			end
-
-		end
-	end
-
-	if now - lastRemote >= REMOTE_RATE then
-		lastRemote = now
-	end
-
-	if now - lastTouch >= TOUCH_RATE then
-		lastTouch = now
-	end
+-- RESET ON DEATH
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(1)
+    running = true
 end)
-
-print("⚡ Ultra Aura Loaded")

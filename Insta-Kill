@@ -3,9 +3,9 @@
 local RANGE = 15
 local AURA_SIZE = Vector3.new(15,15,15)
 
-local TOUCH_RATE = 32.5
-local REMOTE_RATE = 75
-local TOUCH_BURST = 1.5
+local TOUCH_RATE = 200
+local REMOTE_RATE = 100
+local TOUCH_BURST = 1
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")

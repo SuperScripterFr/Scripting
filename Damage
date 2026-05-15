@@ -36,6 +36,8 @@ local function applyHitbox(player)
 		box.SurfaceTransparency = 1
 		box.Parent = hrp
 		box.CanColide = false
+		box.CanQuery = true -- Secret
+		box.CanTouch = false
 	end)
 end
 

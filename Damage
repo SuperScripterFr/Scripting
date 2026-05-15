@@ -35,6 +35,7 @@ local function applyHitbox(player)
 		box.Color3 = Color3.fromRGB(255,0,0)
 		box.SurfaceTransparency = 1
 		box.Parent = hrp
+		box.CanColide = false
 	end)
 end
 

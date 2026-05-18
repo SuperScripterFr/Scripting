@@ -97,6 +97,7 @@ end
 local MAX_RANDOM_TOOLS = 3
 
 local PRIORITY_TOOLS = {
+	"Blade Arm"
 	"Fists",
 	"Energy Sword",
 	"Axe",

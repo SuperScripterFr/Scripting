@@ -94,7 +94,7 @@ end
 -- TOOL SELECTION
 ------------------------------------------------------------
 
-local MAX_RANDOM_TOOLS = 2
+local MAX_RANDOM_TOOLS = 3
 
 local PRIORITY_TOOLS = {
 	"Fists",

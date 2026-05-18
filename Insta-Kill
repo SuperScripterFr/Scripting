@@ -19,9 +19,9 @@ local RANGE = 30
 local AURA_SIZE = Vector3.new(30,30,30)
 
 -- burst structure
-local BURST_COUNT = 4
-local TOUCHES_PER_PART = 4
-local REMOTES_PER_TOOL = 4
+local BURST_COUNT = 3
+local TOUCHES_PER_PART = 3
+local REMOTES_PER_TOOL = 3
 
 -- timing
 local BURST_INTERVAL = 1 / 10

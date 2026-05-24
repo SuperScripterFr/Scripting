@@ -1,21 +1,49 @@
--- ⚡ No Cooldown
+-- ⚡ NO COOLDOWN CORE V2 (Timing Authority)
 
 local RunService = game:GetService("RunService")
 
---================================================
--- ⚡ GLOBAL COOLDOWN BREAKER (Original Power)
---================================================
-local function fastYield()
-	RunService.PreSimulation:Wait()
-	RunService.Heartbeat:Wait()
-end
-
+-- Break waits (keep your power)
 hookfunction(wait, function()
-	fastYield()
+	return RunService.PostSimulation:Wait()
 end)
 
 hookfunction(task.wait, function()
-	fastYield()
+	return RunService.PostSimulation:Wait()
 end)
 
-print("⚡ No Cooldown Running")
+hookfunction(delay, function(_,f)
+	task.spawn(f)
+end)
+
+hookfunction(spawn, function(f)
+	task.spawn(f)
+end)
+
+-- ⭐ GLOBAL ULTRA TICK SYSTEM
+_G.UltraTick = _G.UltraTick or {}
+
+local TICK_RATE = 1/75 -- safe insane speed
+
+local acc = 0
+local listeners = {}
+
+function _G.UltraTick.Bind(fn)
+	table.insert(listeners, fn)
+end
+
+RunService.Heartbeat:Connect(function(dt)
+
+	acc += dt
+
+	while acc >= TICK_RATE do
+		acc -= TICK_RATE
+
+		for i = 1,#listeners do
+			listeners[i]()
+		end
+
+	end
+
+end)
+
+print("⚡ No Cooldown Core Online")

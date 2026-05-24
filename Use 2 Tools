@@ -43,7 +43,7 @@ end
 -- CONFIG
 ------------------------------------------------------------
 
-local APS = 75
+local APS = 45
 local PULSE_INTERVAL = 1 / APS
 
 local RESPAWN_BURST_TIME = 1.0

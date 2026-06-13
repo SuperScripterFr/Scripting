@@ -1,5 +1,4 @@
--- ⚡ QUANTUM FAST RESPAWN V3
--- Minimal Overhead Version
+-- ⚡ QUANTUM FAST RESPAWN V4 (FIXED + RELIABLE)
 
 ----------------------------------------------------
 -- SERVICES
@@ -24,56 +23,41 @@ local HEALTH_THRESHOLD = 6
 ----------------------------------------------------
 
 local active = false
-
 local firing = false
-local lastFire = 0
 
-local CharacterConnections = {}
+local connections = {}
+
+local currentHumanoid = nil
+local characterToken = 0 -- 🔥 prevents old character leaks
 
 ----------------------------------------------------
--- CONNECTION CLEANUP
+-- CLEANUP
 ----------------------------------------------------
 
-local function disconnectCharacterConnections()
-
-	for i = 1,#CharacterConnections do
-
-		local conn = CharacterConnections[i]
-
-		if conn and conn.Connected then
-			conn:Disconnect()
+local function disconnectAll()
+	for _, c in ipairs(connections) do
+		if c and c.Connected then
+			c:Disconnect()
 		end
 	end
-
-	table.clear(CharacterConnections)
+	table.clear(connections)
 end
 
 local function track(conn)
-	table.insert(CharacterConnections, conn)
+	table.insert(connections, conn)
 	return conn
 end
 
 ----------------------------------------------------
--- FAST FIRE
+-- SAFE FIRE (FIXED TIMING)
 ----------------------------------------------------
 
 local function fireRespawn()
 
-	local now = os.clock()
-
-	if firing then
-		return
-	end
-
-	-- prevents spam during instant spawnkills
-	if now - lastFire < 0.1 then
-		return
-	end
-
-	lastFire = now
+	if firing then return end
 	firing = true
 
-	disconnectCharacterConnections()
+	disconnectAll()
 
 	if GuideEvent then
 		GuideEvent:FireServer()
@@ -81,69 +65,68 @@ local function fireRespawn()
 		player:LoadCharacter()
 	end
 
-	task.delay(0.1,function()
+	task.delay(0.15, function()
 		firing = false
 	end)
 end
 
 ----------------------------------------------------
--- CHARACTER HOOK
+-- CHARACTER HOOK (ROBUST VERSION)
 ----------------------------------------------------
 
 local function hookCharacter(char)
 
-	disconnectCharacterConnections()
+	characterToken += 1
+	local myToken = characterToken
 
-	local hum = char:FindFirstChildOfClass("Humanoid")
+	disconnectAll()
 
-	if not hum then
-		return
-	end
+	local hum = char:WaitForChild("Humanoid", 5)
+	if not hum then return end
+
+	currentHumanoid = hum
 
 	local triggered = false
 
 	local function trigger()
-
-		if triggered then
-			return
-		end
-
-		if not active then
-			return
-		end
+		if triggered then return end
+		if not active then return end
+		if characterToken ~= myToken then return end -- 🔥 prevents old character calls
 
 		triggered = true
-
 		fireRespawn()
 	end
 
-	------------------------------------------------
-	-- PRE-DEATH
-	------------------------------------------------
-
+	-- health check
 	track(hum.HealthChanged:Connect(function(hp)
-
 		if hp <= HEALTH_THRESHOLD then
 			trigger()
 		end
 	end))
 
-	------------------------------------------------
-	-- FALLBACK
-	------------------------------------------------
-
+	-- death fallback
 	track(hum.Died:Connect(trigger))
 end
 
 ----------------------------------------------------
--- CHARACTER LISTENER
+-- CHARACTER HANDLER (FIXED ORDERING)
 ----------------------------------------------------
 
-player.CharacterAdded:Connect(function(char)
+local function tryHookCharacter()
+	if not active then return end
 
-	if active then
+	local char = player.Character
+	if char then
 		hookCharacter(char)
 	end
+end
+
+player.CharacterAdded:Connect(function(char)
+	task.defer(function()
+		if active then
+			hookCharacter(char)
+		end
+	end)
 end)
 
 ----------------------------------------------------
@@ -155,18 +138,11 @@ local function setState(state)
 	active = state
 
 	if active then
-
 		print("⚡ Respawn ON")
-
-		if player.Character then
-			hookCharacter(player.Character)
-		end
-
+		tryHookCharacter()
 	else
-
 		print("⚡ Respawn OFF")
-
-		disconnectCharacterConnections()
+		disconnectAll()
 	end
 end
 
@@ -174,12 +150,8 @@ end
 -- KEYBIND
 ----------------------------------------------------
 
-UserInputService.InputBegan:Connect(function(input,gp)
-
-	if gp then
-		return
-	end
-
+UserInputService.InputBegan:Connect(function(input, gp)
+	if gp then return end
 	if input.KeyCode == TOGGLE_KEY then
 		setState(not active)
 	end
@@ -197,12 +169,12 @@ gui.Parent = game:GetService("CoreGui")
 local button = Instance.new("TextButton")
 button.Parent = gui
 
-button.Size = UDim2.fromOffset(170,55)
-button.Position = UDim2.fromScale(0.98,0.55)
-button.AnchorPoint = Vector2.new(1,0.5)
+button.Size = UDim2.fromOffset(170, 55)
+button.Position = UDim2.fromScale(0.98, 0.55)
+button.AnchorPoint = Vector2.new(1, 0.5)
 
-button.BackgroundColor3 = Color3.fromRGB(15,15,20)
-button.TextColor3 = Color3.fromRGB(255,255,255)
+button.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+button.TextColor3 = Color3.fromRGB(255, 255, 255)
 
 button.Font = Enum.Font.GothamBold
 button.TextSize = 15
@@ -211,7 +183,7 @@ button.Active = true
 button.Draggable = true
 
 local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0,12)
+corner.CornerRadius = UDim.new(0, 12)
 corner.Parent = button
 
 local stroke = Instance.new("UIStroke")
@@ -219,23 +191,20 @@ stroke.Thickness = 2
 stroke.Parent = button
 
 local function updateButton()
-
 	if active then
 		button.Text = "⚡ RESPAWN: ON"
-		stroke.Color = Color3.fromRGB(0,255,100)
+		stroke.Color = Color3.fromRGB(0, 255, 100)
 	else
 		button.Text = "⚡ RESPAWN: OFF"
-		stroke.Color = Color3.fromRGB(255,60,60)
+		stroke.Color = Color3.fromRGB(255, 60, 60)
 	end
 end
 
 button.MouseButton1Click:Connect(function()
-
 	setState(not active)
-
 	updateButton()
 end)
 
 updateButton()
 
-print("⚡ Quantum Fast Respawn V3 Loaded")
+print("⚡ Quantum Fast Respawn V4 Loaded (FIXED)")

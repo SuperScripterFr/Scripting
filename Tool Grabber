@@ -1,5 +1,4 @@
--- ⚡ RTX TOOL GRABBER V4
--- FINAL OPTIMIZED EDITION
+-- ⚡ RTX TOOL GRABBER V5 (STABLE + FAST)
 
 ---------------------------------------------------
 -- SERVICES
@@ -18,117 +17,62 @@ local Tycoons = workspace:WaitForChild("Tycoons")
 local PAD_RANGE = 1250
 local TOUCH_BURST = 2
 
-local ACQUIRE_WINDOW = 1.25
-
----------------------------------------------------
--- BASE FILTERS
----------------------------------------------------
-
-local allowedBases = {
-	Stone=true,
-	Magic=true,
-	Storm=true,
-	Robotic=true,
-	Nuclear=true,
-	Frozen=true,
-	Magma=true,
-	Void=true,
-	Thunder=true,
-	Toxic=true,
-	Mecha=true,
-	Kong=true,
-	Hyper=true,
-	Shadow=true
-}
-
-local excludedBases = {
-	Insanity=true,
-	Giant=true,
-	Dark=true,
-	Spike=true,
-	Web=true,
-	Strong=true
-}
-
----------------------------------------------------
--- TOOL RULES
----------------------------------------------------
-
-local toolRules = {
-	{pattern="Energy Sword", base="Stone"},
-	{pattern="Staff", base="Magic"},
-	{pattern="Axe", base="Storm"},
-	{pattern="Fist", base="Robotic"},
-
-	{pattern="Claws", base="ALL"},
-	{pattern="Punch", base="Kong"},
-}
-
 ---------------------------------------------------
 -- STATE
 ---------------------------------------------------
 
 local padsByBase = {}
-
 local currentCharacter
 local currentRoot
 
-local acquisitionActive = false
+local running = false
+local queued = false
 
 ---------------------------------------------------
--- CHARACTER
+-- CHARACTER TRACKING (SAFE + FAST)
 ---------------------------------------------------
 
 local function bindCharacter(char)
-
 	currentCharacter = char
-	currentRoot = nil
+	currentRoot = char and char:FindFirstChild("HumanoidRootPart")
 
-	if not char then
-		return
+	if char and not currentRoot then
+		currentRoot = char:WaitForChild("HumanoidRootPart", 5)
 	end
 
-	currentRoot = char:FindFirstChild("HumanoidRootPart")
-
-	if not currentRoot then
-		task.spawn(function()
-
-			local hrp = char:WaitForChild("HumanoidRootPart",5)
-
-			if currentCharacter == char then
-				currentRoot = hrp
-			end
-		end)
-	end
-end
-
-if LocalPlayer.Character then
-	bindCharacter(LocalPlayer.Character)
+	-- 🔥 trigger instant acquire after spawn
+	task.defer(function()
+		if currentRoot then
+			task.wait(0.1) -- tiny stabilization window (prevents nil HRP race)
+			triggerAcquire()
+		end
+	end)
 end
 
 LocalPlayer.CharacterAdded:Connect(bindCharacter)
+if LocalPlayer.Character then
+	bindCharacter(LocalPlayer.Character)
+end
 
 ---------------------------------------------------
 -- TOOL CHECK
 ---------------------------------------------------
 
 local function hasTool(pattern)
-
 	local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
 
 	if backpack then
-		for _,v in ipairs(backpack:GetChildren()) do
-			if v:IsA("Tool") and string.find(v.Name,pattern) then
+		for _, v in ipairs(backpack:GetChildren()) do
+			if v:IsA("Tool") and v.Name:find(pattern) then
 				return true
 			end
 		end
 	end
 
 	local char = currentCharacter
-
 	if char then
-		for _,v in ipairs(char:GetChildren()) do
-			if v:IsA("Tool") and string.find(v.Name,pattern) then
+		for _, v in ipairs(char:GetChildren()) do
+			if v:IsA("Tool") and v.Name:find(pattern) then
 				return true
 			end
 		end
@@ -138,145 +82,84 @@ local function hasTool(pattern)
 end
 
 ---------------------------------------------------
--- PAD REGISTRATION
+-- PAD REGISTER (CLEAN + RELIABLE)
 ---------------------------------------------------
 
 local function registerPad(pad)
-
-	if not pad:IsA("BasePart") then
-		return
-	end
-
-	if not pad:FindFirstChildOfClass("TouchTransmitter") then
-		return
-	end
+	if not pad:IsA("BasePart") then return end
+	if not pad:FindFirstChildOfClass("TouchTransmitter") then return end
 
 	local giver = pad.Parent
-
-	if not giver or not giver.Name:find("GearGiver1") then
-		return
-	end
+	if not giver or not giver.Name:find("GearGiver1") then return end
 
 	local base = giver.Parent
-
-	if not base then
-		return
-	end
+	if not base then return end
 
 	local baseName = base.Name
 
-	if excludedBases[baseName] then
-		return
-	end
-
-	if not allowedBases[baseName] then
-		return
-	end
-
 	padsByBase[baseName] = padsByBase[baseName] or {}
 
-	for _,existing in ipairs(padsByBase[baseName]) do
-		if existing == pad then
-			return
-		end
+	for _, p in ipairs(padsByBase[baseName]) do
+		if p == pad then return end
 	end
 
-	table.insert(padsByBase[baseName],pad)
+	table.insert(padsByBase[baseName], pad)
 end
 
 ---------------------------------------------------
--- INITIAL SCAN
+-- INITIAL SCAN (FAST PATH)
 ---------------------------------------------------
 
-for _,obj in ipairs(Tycoons:GetDescendants()) do
+for _, obj in ipairs(Tycoons:GetDescendants()) do
 	if obj:IsA("BasePart") then
 		registerPad(obj)
 	end
 end
 
 ---------------------------------------------------
--- LIVE SCAN
+-- LIVE SCAN (NO SPAM TRIGGERS)
 ---------------------------------------------------
 
 Tycoons.DescendantAdded:Connect(function(obj)
+	if obj:IsA("TouchTransmitter") then
+		local pad = obj.Parent
+		if pad and pad:IsA("BasePart") then
+			registerPad(pad)
 
-	------------------------------------------------
-	-- ⚡ TOUCHTRANSMITTER DETECTED
-	------------------------------------------------
-
-	if not obj:IsA("TouchTransmitter") then
-		return
+			-- debounce trigger
+			task.defer(triggerAcquire)
+		end
 	end
-
-	local pad = obj.Parent
-
-	if not pad or not pad:IsA("BasePart") then
-		return
-	end
-
-	local giver = pad.Parent
-
-	if not giver or not giver.Name:find("GearGiver1") then
-		return
-	end
-
-	------------------------------------------------
-	-- ⚡ REGISTER NEW PAD
-	------------------------------------------------
-
-	registerPad(pad)
-
-	------------------------------------------------
-	-- ⚡ INSTANT RETRY
-	------------------------------------------------
-
-	task.spawn(function()
-
-		RunService.PreSimulation:Wait()
-
-		acquireTools()
-	end)
 end)
 
 ---------------------------------------------------
--- CLEANUP + CLOSEST PAD
+-- PAD PICKER (SAFE CLEANUP)
 ---------------------------------------------------
 
 local function getClosestPad(baseName)
-
 	local root = currentRoot
-
-	if not root then
-		return nil
-	end
+	if not root then return nil end
 
 	local pads = padsByBase[baseName]
-
-	if not pads then
-		return nil
-	end
+	if not pads then return nil end
 
 	local closest
-	local bestDist = PAD_RANGE
+	local best = PAD_RANGE
 
-	for i = #pads,1,-1 do
-
+	for i = #pads, 1, -1 do
 		local pad = pads[i]
 
 		if not pad or not pad.Parent then
-			table.remove(pads,i)
-			continue
-		end
-
-		local dist = (pad.Position - root.Position).Magnitude
-
-		if dist < bestDist then
-			bestDist = dist
-			closest = pad
+			table.remove(pads, i)
+		else
+			local dist = (pad.Position - root.Position).Magnitude
+			if dist < best then
+				best = dist
+				closest = pad
+			end
 		end
 	end
 
-	-- ⚡ memory cleanup
 	if #pads == 0 then
 		padsByBase[baseName] = nil
 	end
@@ -285,55 +168,42 @@ local function getClosestPad(baseName)
 end
 
 ---------------------------------------------------
--- TOUCH
+-- TOUCH (LIGHTER + MORE RELIABLE)
 ---------------------------------------------------
 
-local function tap(root,pad)
-
-	for i = 1, TOUCH_BURST do
-		firetouchinterest(root,pad,0)
-		firetouchinterest(root,pad,1)
+local function tap(root, pad)
+	for _ = 1, TOUCH_BURST do
+		firetouchinterest(root, pad, 0)
+		firetouchinterest(root, pad, 1)
 	end
 end
 
 ---------------------------------------------------
--- BUILD PAD WAVE
+-- BUILD WAVE (FAST SHORT-CIRCUIT)
 ---------------------------------------------------
 
-local function buildPadWave()
+local toolRules = {
+	{pattern="Energy Sword", base="Stone"},
+	{pattern="Staff", base="Magic"},
+	{pattern="Axe", base="Storm"},
+	{pattern="Fist", base="Robotic"},
+	{pattern="Claws", base="ALL"},
+	{pattern="Punch", base="Kong"},
+}
 
+local function buildWave()
 	local wave = {}
 
-	for _,rule in ipairs(toolRules) do
-
+	for _, rule in ipairs(toolRules) do
 		if not hasTool(rule.pattern) then
-
-			------------------------------------------------
-			-- ALL BASES
-			------------------------------------------------
-
 			if rule.base == "ALL" then
-
 				for baseName in pairs(padsByBase) do
-
 					local pad = getClosestPad(baseName)
-
-					if pad then
-						wave[pad] = true
-					end
+					if pad then wave[pad] = true end
 				end
-
-			------------------------------------------------
-			-- SINGLE BASE
-			------------------------------------------------
-
 			else
-
 				local pad = getClosestPad(rule.base)
-
-				if pad then
-					wave[pad] = true
-				end
+				if pad then wave[pad] = true end
 			end
 		end
 	end
@@ -342,101 +212,57 @@ local function buildPadWave()
 end
 
 ---------------------------------------------------
--- ACQUIRE ENGINE
+-- MAIN ENGINE (NO STACKING, GUARANTEED SINGLE RUN)
 ---------------------------------------------------
 
-local function acquireTools()
-
-	if acquisitionActive then
+function triggerAcquire()
+	if running then
+		queued = true
 		return
 	end
 
-	acquisitionActive = true
+	running = true
 
 	task.spawn(function()
-
-		local t0 = os.clock()
-
-		while os.clock() - t0 < ACQUIRE_WINDOW do
+		repeat
+			queued = false
 
 			local root = currentRoot
+			if not root then break end
 
-			if not root then
-				RunService.PreSimulation:Wait()
-				RunService.PostSimulation:Wait()
-				continue
-			end
+			local wave = buildWave()
+			if not next(wave) then break end
 
-			------------------------------------------------
-			-- BUILD ACQUISITION WAVE
-			------------------------------------------------
-
-			local wave = buildPadWave()
-
-			------------------------------------------------
-			-- COMPLETE CHECK
-			------------------------------------------------
-
-			if not next(wave) then
-				break
-			end
-
-			------------------------------------------------
-			-- TOUCH EVERYTHING SAME FRAME
-			------------------------------------------------
-
-			for _ = 1, TOUCH_BURST do
-				for pad in pairs(wave) do
-					tap(root,pad)
+			for pad in pairs(wave) do
+				if currentRoot then
+					tap(currentRoot, pad)
 				end
-
-				RunService.PreSimulation:Wait()
 			end
 
-			RunService.PreSimulation:Wait()
-			RunService.PostSimulation:Wait()
-		end
+			RunService.Heartbeat:Wait()
 
-		acquisitionActive = false
+		until not queued
+
+		running = false
 	end)
 end
 
 ---------------------------------------------------
--- GUIDE EVENT HOOK
+-- GUIDE EVENT HOOK (SAFE VERSION)
 ---------------------------------------------------
 
-local GuideEvent = workspace:FindFirstChild("GuideEvent",true)
+local GuideEvent = workspace:FindFirstChild("GuideEvent", true)
 
 if GuideEvent and GuideEvent:IsA("RemoteEvent") then
-
-	local old
-
-	old = hookmetamethod(game,"__namecall",function(self,...)
-
-		local method = getnamecallmethod()
-
-		if self == GuideEvent and method == "FireServer" then
-
-			task.defer(acquireTools)
-		end
-
-		return old(self,...)
+	GuideEvent.OnClientEvent:Connect(function()
+		task.defer(triggerAcquire)
 	end)
 end
 
 ---------------------------------------------------
--- RESPAWN
+-- STARTUP
 ---------------------------------------------------
 
-LocalPlayer.CharacterAdded:Connect(function()
+task.defer(triggerAcquire)
 
-	task.defer(acquireTools)
-end)
-
----------------------------------------------------
--- INITIAL START
----------------------------------------------------
-
-task.defer(acquireTools)
-
-print("⚡ RTX Tool Grabber V4 Loaded")
+print("⚡ RTX Tool Grabber V5 Loaded (Stable)")

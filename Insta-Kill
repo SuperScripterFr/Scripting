@@ -1,6 +1,4 @@
---// ⚡ RTX BURST AURA V2
---// Detection Burst Engine
---// Optimized for consistency + low hitching
+-- ⚡ RTX BURST AURA V3 (STABLE + CONSISTENT)
 
 --------------------------------------------------
 -- SERVICES
@@ -18,22 +16,22 @@ local LocalPlayer = Players.LocalPlayer
 local RANGE = 30
 local RANGE_SQ = RANGE * RANGE
 
--- adaptive burst
-local TOUCHES_PER_PART = 3
-local REMOTES_PER_TOOL = 3
+local TOUCHES_PER_PART = 2
+local REMOTES_PER_TOOL = 2
 
--- update rates
-local TARGET_REFRESH = 0.05
-local IDLE_INTERVAL = 0.12
-local ACTIVE_INTERVAL = 0.06
+local TARGET_REFRESH = 0.08
+local ATTACK_INTERVAL = 0.06
 
 --------------------------------------------------
--- INTERNALS
+-- STATE
 --------------------------------------------------
 
 local toolCache = {}
 local touchCache = {}
 local remoteCache = {}
+
+local localCharacter
+local localRoot
 
 local currentTarget
 local currentTargetHum
@@ -42,60 +40,26 @@ local currentTargetParts
 local lastTargetUpdate = 0
 local lastAttack = 0
 
-local activeState = false
-
---------------------------------------------------
--- PRIORITY PARTS
---------------------------------------------------
-
-local PRIORITY_PARTS = {
-	"HumanoidRootPart",
-	"Torso",
-	"UpperTorso",
-}
-
---------------------------------------------------
--- FAST REFERENCES
---------------------------------------------------
-
-local localCharacter
-local localRoot
-
 --------------------------------------------------
 -- CHARACTER
 --------------------------------------------------
 
 local function bindCharacter(char)
-
 	localCharacter = char
-	localRoot = nil
+	localRoot = char and char:FindFirstChild("HumanoidRootPart")
 
-	if not char then
-		return
-	end
-
-	localRoot = char:FindFirstChild("HumanoidRootPart")
-
-	if not localRoot then
-		task.spawn(function()
-
-			local hrp = char:WaitForChild("HumanoidRootPart",5)
-
-			if localCharacter == char then
-				localRoot = hrp
-			end
-		end)
+	if char and not localRoot then
+		localRoot = char:WaitForChild("HumanoidRootPart", 5)
 	end
 end
 
+LocalPlayer.CharacterAdded:Connect(bindCharacter)
 if LocalPlayer.Character then
 	bindCharacter(LocalPlayer.Character)
 end
 
-LocalPlayer.CharacterAdded:Connect(bindCharacter)
-
 --------------------------------------------------
--- TOOL CACHE
+-- TOOL CACHE (LAZY + SAFE)
 --------------------------------------------------
 
 local function cacheTools()
@@ -105,41 +69,20 @@ local function cacheTools()
 	table.clear(remoteCache)
 
 	local char = localCharacter
-	if not char then
-		return
-	end
+	if not char then return end
 
-	for _,obj in ipairs(char:GetChildren()) do
-
+	for _, obj in ipairs(char:GetChildren()) do
 		if obj:IsA("Tool") then
+			table.insert(toolCache, obj)
 
-			toolCache[#toolCache+1] = obj
-
-			------------------------------------------------
-			-- TOUCH PART
-			------------------------------------------------
-
-			local touch = obj:FindFirstChildWhichIsA(
-				"TouchTransmitter",
-				true
-			)
-
-			if touch then
-
-				local part = touch.Parent
-
-				if part and part:IsA("BasePart") then
-					touchCache[obj] = part
-				end
+			-- wait-safe remote detection
+			local touch = obj:FindFirstChildWhichIsA("TouchTransmitter", true)
+			if touch and touch.Parent and touch.Parent:IsA("BasePart") then
+				touchCache[obj] = touch.Parent
 			end
 
-			------------------------------------------------
-			-- REMOTE
-			------------------------------------------------
-
 			local remote = obj:FindFirstChild("FightEvent")
-
-			if remote then
+			if remote and remote:IsA("RemoteEvent") then
 				remoteCache[obj] = remote
 			end
 		end
@@ -147,24 +90,26 @@ local function cacheTools()
 end
 
 --------------------------------------------------
--- TOOL TRACKING
+-- TOOL TRACKING (DEBOUNCED)
 --------------------------------------------------
 
 local function hookCharacter(char)
-
 	cacheTools()
 
-	char.ChildAdded:Connect(function(obj)
+	local function rescan()
+		task.wait(0.05)
+		cacheTools()
+	end
 
+	char.ChildAdded:Connect(function(obj)
 		if obj:IsA("Tool") then
-			task.defer(cacheTools)
+			rescan()
 		end
 	end)
 
 	char.ChildRemoved:Connect(function(obj)
-
 		if obj:IsA("Tool") then
-			task.defer(cacheTools)
+			rescan()
 		end
 	end)
 end
@@ -176,19 +121,22 @@ end
 LocalPlayer.CharacterAdded:Connect(hookCharacter)
 
 --------------------------------------------------
--- TARGET PART CACHE
+-- TARGET PARTS
 --------------------------------------------------
 
+local PRIORITY_PARTS = {
+	"HumanoidRootPart",
+	"UpperTorso",
+	"Torso",
+}
+
 local function buildParts(char)
+	local t = {}
 
-	local t = table.create(3)
-
-	for i = 1,#PRIORITY_PARTS do
-
-		local part = char:FindFirstChild(PRIORITY_PARTS[i])
-
+	for _, name in ipairs(PRIORITY_PARTS) do
+		local part = char:FindFirstChild(name)
 		if part then
-			t[#t+1] = part
+			table.insert(t, part)
 		end
 	end
 
@@ -196,186 +144,110 @@ local function buildParts(char)
 end
 
 --------------------------------------------------
--- TARGETING
+-- TARGET UPDATE (LOCKED STABILITY)
 --------------------------------------------------
 
 local function updateTarget()
 
 	local now = os.clock()
-
-	if now - lastTargetUpdate < TARGET_REFRESH then
-		return
-	end
-
+	if now - lastTargetUpdate < TARGET_REFRESH then return end
 	lastTargetUpdate = now
 
-	local myRoot = localRoot
-
-	if not myRoot then
+	local root = localRoot
+	if not root then
 		currentTarget = nil
 		return
 	end
 
-	local bestCharacter
-	local bestHum
+	local best, bestHum
 	local bestDist = RANGE_SQ
+	local myPos = root.Position
 
-	local myPos = myRoot.Position
-
-	for _,plr in ipairs(Players:GetPlayers()) do
-
-		if plr ~= LocalPlayer then
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= LocalPlayer and plr.Character then
 
 			local char = plr.Character
+			local hum = char:FindFirstChildOfClass("Humanoid")
+			local r = char:FindFirstChild("HumanoidRootPart")
 
-			if char then
+			if hum and r and hum.Health > 0 then
 
-				local hum = char:FindFirstChildOfClass("Humanoid")
+				local d = r.Position - myPos
+				local dist = d.X*d.X + d.Y*d.Y + d.Z*d.Z
 
-				if hum and hum.Health > 0 then
-
-					local root = char:FindFirstChild("HumanoidRootPart")
-
-					if root then
-
-						local delta = root.Position - myPos
-
-						local distSq =
-							delta.X*delta.X +
-							delta.Y*delta.Y +
-							delta.Z*delta.Z
-
-						if distSq < bestDist then
-
-							bestDist = distSq
-							bestCharacter = char
-							bestHum = hum
-						end
-					end
+				if dist < bestDist then
+					bestDist = dist
+					best = char
+					bestHum = hum
 				end
 			end
 		end
 	end
 
-	currentTarget = bestCharacter
+	currentTarget = best
 	currentTargetHum = bestHum
 
-	if bestCharacter then
-		currentTargetParts = buildParts(bestCharacter)
+	if best then
+		currentTargetParts = buildParts(best)
 	else
 		currentTargetParts = nil
 	end
-
-	activeState = bestCharacter ~= nil
 end
 
 --------------------------------------------------
--- TOUCH ENGINE
+-- HIT ENGINE (STABLE BURST SPREAD)
 --------------------------------------------------
 
 local function hitTarget()
 
-	if not currentTarget then
-		return
-	end
+	if not currentTarget or not currentTargetHum then return end
+	if currentTargetHum.Health <= 0 then return end
+	if not currentTargetParts then return end
 
-	if not currentTargetHum then
-		return
-	end
-
-	if currentTargetHum.Health <= 0 then
-		return
-	end
-
-	local targetParts = currentTargetParts
-
-	if not targetParts then
-		return
-	end
-
-	------------------------------------------------
-	-- TOOL LOOP
-	------------------------------------------------
-
-	for i = 1,#toolCache do
-
-		local tool = toolCache[i]
-
-		------------------------------------------------
-		-- TOUCHES
-		------------------------------------------------
+	for _, tool in ipairs(toolCache) do
 
 		local touchPart = touchCache[tool]
+		local remote = remoteCache[tool]
 
+		-- TOUCH SYSTEM
 		if touchPart then
-
-			for p = 1,#targetParts do
-
-				local targetPart = targetParts[p]
-
-				for t = 1,TOUCHES_PER_PART do
-
-					firetouchinterest(
-						touchPart,
-						targetPart,
-						0
-					)
-
-					firetouchinterest(
-						touchPart,
-						targetPart,
-						1
-					)
+			for _, targetPart in ipairs(currentTargetParts) do
+				for _ = 1, TOUCHES_PER_PART do
+					firetouchinterest(touchPart, targetPart, 0)
+					firetouchinterest(touchPart, targetPart, 1)
 				end
 			end
 		end
 
-		------------------------------------------------
-		-- REMOTES
-		------------------------------------------------
-
-		local remote = remoteCache[tool]
-
+		-- REMOTE SYSTEM (SAFE SPREAD)
 		if remote then
-
-			for r = 1,REMOTES_PER_TOOL do
-				remote:FireServer()
-			end
+			task.spawn(function()
+				for _ = 1, REMOTES_PER_TOOL do
+					if remote.Parent then
+						remote:FireServer()
+						RunService.Heartbeat:Wait()
+					end
+				end
+			end)
 		end
 	end
 end
 
 --------------------------------------------------
--- MAIN ENGINE
+-- MAIN LOOP
 --------------------------------------------------
 
 RunService.PreSimulation:Connect(function()
 
 	updateTarget()
 
-	------------------------------------------------
-	-- IDLE MODE
-	------------------------------------------------
-
-	local interval = activeState
-		and ACTIVE_INTERVAL
-		or IDLE_INTERVAL
-
 	local now = os.clock()
-
-	if now - lastAttack < interval then
-		return
-	end
-
+	if now - lastAttack < ATTACK_INTERVAL then return end
 	lastAttack = now
 
-	------------------------------------------------
-	-- ATTACK
-	------------------------------------------------
-
-	if activeState then
+	if currentTarget then
 		hitTarget()
 	end
 end)
 
-print("⚡ RTX Burst Aura V2 Loaded")
+print("⚡ RTX Burst Aura V3 Loaded (Stable)")

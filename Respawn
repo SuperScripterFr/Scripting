@@ -1,58 +1,45 @@
--- ⚡ QUANTUM FRAME-PERFECT RESPAWN V2
--- PERFECTED STABLE CORE
+-- ⚡ QUANTUM FAST RESPAWN V3
+-- Minimal Overhead Version
 
 ----------------------------------------------------
 -- SERVICES
 ----------------------------------------------------
 
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local UIS = game:GetService("UserInputService")
+local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 local GuideEvent = ReplicatedStorage:FindFirstChild("Guide")
+
+----------------------------------------------------
+-- SETTINGS
+----------------------------------------------------
+
+local TOGGLE_KEY = Enum.KeyCode.R
+local HEALTH_THRESHOLD = 6
 
 ----------------------------------------------------
 -- STATE
 ----------------------------------------------------
 
 local active = false
+
 local firing = false
+local lastFire = 0
 
-local TOGGLE_KEY = Enum.KeyCode.R
-
-----------------------------------------------------
--- CONNECTION REGISTRIES
-----------------------------------------------------
-
--- ⚡ character-only connections
 local CharacterConnections = {}
 
--- ⚡ persistent connections
-local PersistentConnections = {}
-
 ----------------------------------------------------
--- ⚡ TRACKERS
-----------------------------------------------------
-
-local function trackCharacter(conn)
-	table.insert(CharacterConnections, conn)
-	return conn
-end
-
-local function trackPersistent(conn)
-	table.insert(PersistentConnections, conn)
-	return conn
-end
-
-----------------------------------------------------
--- ⚡ CLEAN CHARACTER CONNECTIONS ONLY
+-- CONNECTION CLEANUP
 ----------------------------------------------------
 
 local function disconnectCharacterConnections()
 
-	for _, conn in ipairs(CharacterConnections) do
+	for i = 1,#CharacterConnections do
+
+		local conn = CharacterConnections[i]
+
 		if conn and conn.Connected then
 			conn:Disconnect()
 		end
@@ -61,83 +48,53 @@ local function disconnectCharacterConnections()
 	table.clear(CharacterConnections)
 end
 
+local function track(conn)
+	table.insert(CharacterConnections, conn)
+	return conn
+end
+
 ----------------------------------------------------
--- ⚡ FRAME PERFECT FIRE
+-- FAST FIRE
 ----------------------------------------------------
 
 local function fireRespawn()
+
+	local now = os.clock()
 
 	if firing then
 		return
 	end
 
+	-- prevents spam during instant spawnkills
+	if now - lastFire < 0.1 then
+		return
+	end
+
+	lastFire = now
 	firing = true
 
-	local success = false
+	disconnectCharacterConnections()
 
-	local function attempt()
-
-		if success then
-			return
-		end
-
-		local ok = pcall(function()
-
-			if GuideEvent then
-				GuideEvent:FireServer()
-			else
-				player:LoadCharacter()
-			end
-		end)
-
-		if ok then
-			success = true
-		end
+	if GuideEvent then
+		GuideEvent:FireServer()
+	else
+		player:LoadCharacter()
 	end
 
-	------------------------------------------------
-	-- ⚡ INSTANT SHOT
-	------------------------------------------------
-
-	attempt()
-
-	------------------------------------------------
-	-- ⚡ FRAME-SYNCED BURSTS
-	------------------------------------------------
-
-	RunService.PreSimulation:Wait()
-	attempt()
-
-	RunService.PostSimulation:Wait()
-	attempt()
-
-	for _ = 1, 2 do
-		RunService.PreSimulation:Wait()
-		attempt()
-	end
-
-	------------------------------------------------
-	-- ⚡ RESET
-	------------------------------------------------
-
-	task.delay(0.12, function()
+	task.delay(0.1,function()
 		firing = false
 	end)
 end
 
 ----------------------------------------------------
--- ⚡ CHARACTER HOOK
+-- CHARACTER HOOK
 ----------------------------------------------------
 
 local function hookCharacter(char)
 
-	------------------------------------------------
-	-- ⚡ WIPE OLD CHARACTER HOOKS ONLY
-	------------------------------------------------
-
 	disconnectCharacterConnections()
 
-	local hum = char:WaitForChild("Humanoid", 1)
+	local hum = char:FindFirstChildOfClass("Humanoid")
 
 	if not hum then
 		return
@@ -145,59 +102,52 @@ local function hookCharacter(char)
 
 	local triggered = false
 
-	------------------------------------------------
-	-- ⚡ PRE-DEATH WINDOW
-	------------------------------------------------
-
-	trackCharacter(hum.HealthChanged:Connect(function(hp)
-
-		if not active then
-			return
-		end
+	local function trigger()
 
 		if triggered then
 			return
 		end
 
-		if hp <= 6 then
-			triggered = true
-			fireRespawn()
-		end
-	end))
-
-	------------------------------------------------
-	-- ⚡ FALLBACK
-	------------------------------------------------
-
-	trackCharacter(hum.Died:Connect(function()
-
 		if not active then
-			return
-		end
-
-		if triggered then
 			return
 		end
 
 		triggered = true
 
 		fireRespawn()
+	end
+
+	------------------------------------------------
+	-- PRE-DEATH
+	------------------------------------------------
+
+	track(hum.HealthChanged:Connect(function(hp)
+
+		if hp <= HEALTH_THRESHOLD then
+			trigger()
+		end
 	end))
+
+	------------------------------------------------
+	-- FALLBACK
+	------------------------------------------------
+
+	track(hum.Died:Connect(trigger))
 end
 
 ----------------------------------------------------
--- ⚡ SINGLE PERSISTENT CHARACTER LISTENER
+-- CHARACTER LISTENER
 ----------------------------------------------------
 
-trackPersistent(player.CharacterAdded:Connect(function(char)
+player.CharacterAdded:Connect(function(char)
 
 	if active then
 		hookCharacter(char)
 	end
-end))
+end)
 
 ----------------------------------------------------
--- ⚡ TOGGLE
+-- TOGGLE
 ----------------------------------------------------
 
 local function setState(state)
@@ -221,22 +171,22 @@ local function setState(state)
 end
 
 ----------------------------------------------------
--- INPUT
+-- KEYBIND
 ----------------------------------------------------
 
-UIS.InputBegan:Connect(function(i, g)
+UserInputService.InputBegan:Connect(function(input,gp)
 
-	if g then
+	if gp then
 		return
 	end
 
-	if i.KeyCode == TOGGLE_KEY then
+	if input.KeyCode == TOGGLE_KEY then
 		setState(not active)
 	end
 end)
 
 ----------------------------------------------------
--- UI TOGGLE BUTTON
+-- UI
 ----------------------------------------------------
 
 local gui = Instance.new("ScreenGui")
@@ -244,74 +194,48 @@ gui.Name = "QuantumRespawnUI"
 gui.ResetOnSpawn = false
 gui.Parent = game:GetService("CoreGui")
 
-local toggleButton = Instance.new("TextButton")
-toggleButton.Parent = gui
+local button = Instance.new("TextButton")
+button.Parent = gui
 
-toggleButton.Size = UDim2.fromOffset(170, 55)
-toggleButton.Position = UDim2.fromScale(0.98, 0.55)
-toggleButton.AnchorPoint = Vector2.new(1, 0.5)
+button.Size = UDim2.fromOffset(170,55)
+button.Position = UDim2.fromScale(0.98,0.55)
+button.AnchorPoint = Vector2.new(1,0.5)
 
-toggleButton.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
-toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+button.BackgroundColor3 = Color3.fromRGB(15,15,20)
+button.TextColor3 = Color3.fromRGB(255,255,255)
 
-toggleButton.Font = Enum.Font.GothamBold
-toggleButton.TextSize = 15
+button.Font = Enum.Font.GothamBold
+button.TextSize = 15
 
-toggleButton.Text = "⚡ RESPAWN: OFF"
-
-toggleButton.Active = true
-toggleButton.Draggable = true
+button.Active = true
+button.Draggable = true
 
 local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0, 12)
-corner.Parent = toggleButton
+corner.CornerRadius = UDim.new(0,12)
+corner.Parent = button
 
 local stroke = Instance.new("UIStroke")
 stroke.Thickness = 2
-stroke.Parent = toggleButton
-
-----------------------------------------------------
--- BUTTON UPDATE
-----------------------------------------------------
+stroke.Parent = button
 
 local function updateButton()
 
 	if active then
-		toggleButton.Text = "⚡ RESPAWN: ON"
-		stroke.Color = Color3.fromRGB(0, 255, 100)
+		button.Text = "⚡ RESPAWN: ON"
+		stroke.Color = Color3.fromRGB(0,255,100)
 	else
-		toggleButton.Text = "⚡ RESPAWN: OFF"
-		stroke.Color = Color3.fromRGB(255, 60, 60)
+		button.Text = "⚡ RESPAWN: OFF"
+		stroke.Color = Color3.fromRGB(255,60,60)
 	end
 end
 
-----------------------------------------------------
--- HOOK INTO STATE CHANGES
-----------------------------------------------------
-
-local oldSetState = setState
-
-setState = function(state)
-
-	oldSetState(state)
-
-	updateButton()
-end
-
-----------------------------------------------------
--- CLICK TO TOGGLE
-----------------------------------------------------
-
-toggleButton.MouseButton1Click:Connect(function()
+button.MouseButton1Click:Connect(function()
 
 	setState(not active)
 
+	updateButton()
 end)
 
 updateButton()
 
-----------------------------------------------------
--- INIT
-----------------------------------------------------
-
-print("⚡ Quantum Frame-Perfect Respawn V2 Loaded")
+print("⚡ Quantum Fast Respawn V3 Loaded")

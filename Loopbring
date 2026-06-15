@@ -1,5 +1,4 @@
---// ⚡ LOOPBRING V3
---// Respawn Tracking Engine
+-- ⚡ LOOPBRING V4 (STABLE + RESPAWN SAFE)
 
 --------------------------------------------------
 -- SERVICES
@@ -15,72 +14,70 @@ local LocalPlayer = Players.LocalPlayer
 -- CONFIG
 --------------------------------------------------
 
-local distance = 2
-
+local distance = 3
 local AUTO_REJOIN = true
 local MEMORY_TIME = 300
 
--- engine
-local ACTIVE_INTERVAL = 0.015
+local ACTIVE_INTERVAL = 0.02
 local IDLE_INTERVAL = 0.08
 
 --------------------------------------------------
--- TARGET STORAGE
+-- STATE
 --------------------------------------------------
 
 local trackedTargets = {}
 local targetMemory = {}
 
---------------------------------------------------
--- FAST LOCAL CACHE
---------------------------------------------------
-
 local localCharacter
 local localRoot
+local localHumanoid
 
 --------------------------------------------------
--- CHARACTER TRACKING
+-- CHARACTER (LOCK SYSTEM FIX)
 --------------------------------------------------
+
+local charVersion = 0
 
 local function bindLocalCharacter(char)
 
+	charVersion += 1
+	local myVersion = charVersion
+
 	localCharacter = char
 	localRoot = nil
+	localHumanoid = nil
 
-	if not char then
-		return
+	if not char then return end
+
+	local root = char:FindFirstChild("HumanoidRootPart")
+	local hum = char:FindFirstChildOfClass("Humanoid")
+
+	if not root then
+		root = char:WaitForChild("HumanoidRootPart", 5)
 	end
 
-	localRoot = char:FindFirstChild("HumanoidRootPart")
-
-	if not localRoot then
-
-		task.spawn(function()
-
-			local hrp = char:WaitForChild(
-				"HumanoidRootPart",
-				5
-			)
-
-			if localCharacter == char then
-				localRoot = hrp
-			end
-		end)
+	if not hum then
+		hum = char:WaitForChild("Humanoid", 5)
 	end
+
+	-- 🔥 only apply if still current character
+	if charVersion ~= myVersion then return end
+
+	localRoot = root
+	localHumanoid = hum
 end
+
+LocalPlayer.CharacterAdded:Connect(bindLocalCharacter)
 
 if LocalPlayer.Character then
 	bindLocalCharacter(LocalPlayer.Character)
 end
 
-LocalPlayer.CharacterAdded:Connect(bindLocalCharacter)
-
 --------------------------------------------------
--- TARGET STATE
+-- TARGET SYSTEM
 --------------------------------------------------
 
-local function createTargetData(player)
-
+local function createTarget(player)
 	return {
 		Player = player,
 		Character = nil,
@@ -90,128 +87,60 @@ local function createTargetData(player)
 	}
 end
 
---------------------------------------------------
--- CHARACTER BINDING
---------------------------------------------------
-
-local function bindTargetCharacter(data,char)
+local function bindTarget(data, char)
 
 	data.Character = char
 	data.Root = nil
 	data.Humanoid = nil
 	data.Alive = false
 
-	if not char then
-		return
-	end
-
-	------------------------------------------------
-	-- ROOT
-	------------------------------------------------
+	if not char then return end
 
 	local root = char:FindFirstChild("HumanoidRootPart")
-
-	if not root then
-		root = char:WaitForChild("HumanoidRootPart",5)
-	end
-
-	if not root then
-		return
-	end
-
-	------------------------------------------------
-	-- HUMANOID
-	------------------------------------------------
-
 	local hum = char:FindFirstChildOfClass("Humanoid")
 
-	if not hum then
-		hum = char:WaitForChild("Humanoid",5)
-	end
-
-	if not hum then
-		return
-	end
+	if not root then root = char:WaitForChild("HumanoidRootPart", 5) end
+	if not hum then hum = char:WaitForChild("Humanoid", 5) end
 
 	data.Root = root
 	data.Humanoid = hum
-	data.Alive = hum.Health > 0
+	data.Alive = hum and hum.Health > 0
 
-	------------------------------------------------
-	-- DEATH DETECTION
-	------------------------------------------------
-
-	hum.Died:Connect(function()
-
-		-- ⚡ instant suspend
-		data.Alive = false
-		data.Root = nil
-	end)
+	if hum then
+		hum.Died:Connect(function()
+			data.Alive = false
+			data.Root = nil
+		end)
+	end
 end
-
---------------------------------------------------
--- TRACK TARGET
---------------------------------------------------
 
 local function trackPlayer(player)
 
-	local data = createTargetData(player)
-
+	local data = createTarget(player)
 	trackedTargets[player.Name] = data
 
-	------------------------------------------------
-	-- EXISTING CHARACTER
-	------------------------------------------------
-
 	if player.Character then
-		task.spawn(bindTargetCharacter,data,player.Character)
+		task.spawn(bindTarget, data, player.Character)
 	end
 
-	------------------------------------------------
-	-- RESPAWN DETECTION
-	------------------------------------------------
-
 	player.CharacterAdded:Connect(function(char)
-
-		-- ⚡ instant rebind on respawn
-		bindTargetCharacter(data,char)
+		bindTarget(data, char)
 	end)
 end
-
---------------------------------------------------
--- UNTRACK
---------------------------------------------------
-
-local function untrackPlayer(name)
-
-	trackedTargets[name] = nil
-end
-
---------------------------------------------------
--- START BRING
---------------------------------------------------
 
 local function startBring(name)
 
 	local plr = Players:FindFirstChild(name)
+	if not plr then return end
 
-	if not plr then
-		return
-	end
-
-	targetMemory[name] = tick()
+	targetMemory[name] = os.clock()
 
 	if not trackedTargets[name] then
 		trackPlayer(plr)
 	end
 end
 
---------------------------------------------------
--- STOP BRING
---------------------------------------------------
-
 local function stopBring(name)
-
 	trackedTargets[name] = nil
 	targetMemory[name] = nil
 end
@@ -224,71 +153,40 @@ local lastUpdate = 0
 
 RunService.PreSimulation:Connect(function()
 
-	local myRoot = localRoot
-
-	if not myRoot then
-		return
-	end
-
-	------------------------------------------------
-	-- ADAPTIVE TIMING
-	------------------------------------------------
+	if not localRoot then return end
 
 	local activeCount = 0
-
 	for _ in pairs(trackedTargets) do
 		activeCount += 1
 	end
 
-	local interval =
-		activeCount > 0
-		and ACTIVE_INTERVAL
-		or IDLE_INTERVAL
-
+	local interval = activeCount > 0 and ACTIVE_INTERVAL or IDLE_INTERVAL
 	local now = os.clock()
 
-	if now - lastUpdate < interval then
-		return
-	end
-
+	if now - lastUpdate < interval then return end
 	lastUpdate = now
 
-	------------------------------------------------
-	-- POSITION CACHE
-	------------------------------------------------
+	local targetPos = localRoot.Position + localRoot.CFrame.LookVector * distance
 
-	local targetPos =
-		myRoot.Position +
-		myRoot.CFrame.LookVector * distance
+	for _, data in pairs(trackedTargets) do
 
-	------------------------------------------------
-	-- LOOPBRING
-	------------------------------------------------
+		if not data.Alive then continue end
+		if not data.Root then continue end
 
-	for name,data in pairs(trackedTargets) do
-
-		if not data.Alive then
+		-- 🔥 SAFETY CHECK (prevents respawn tug-of-war)
+		if not data.Root.Parent then
+			data.Root = nil
 			continue
 		end
 
-		local root = data.Root
-
-		if not root then
-			continue
-		end
-
-		------------------------------------------------
-		-- MOVE
-		------------------------------------------------
-
-		root.CFrame =
-			CFrame.new(targetPos,myRoot.Position)
-			* CFrame.Angles(0,math.rad(180),0)
+		data.Root.CFrame =
+			CFrame.new(targetPos, localRoot.Position)
+			* CFrame.Angles(0, math.rad(180), 0)
 	end
 end)
 
 --------------------------------------------------
--- GUI SETUP
+-- UI (BLACK → RED GRADIENT)
 --------------------------------------------------
 
 local gui = Instance.new("ScreenGui")
@@ -296,23 +194,20 @@ gui.Name = "LoopbringGUI"
 gui.ResetOnSpawn = false
 gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
-local GLASS_BG = Color3.fromRGB(10,12,18)
-local BLUE = Color3.fromRGB(0,162,255)
-local TEXT = Color3.fromRGB(210,225,255)
-local MUTED = Color3.fromRGB(90,120,160)
-local ACTIVE_BG = Color3.fromRGB(18,32,55)
-
-local function round(obj,r)
-	Instance.new("UICorner",obj).CornerRadius = UDim.new(0,r)
+local function gradient(obj)
+	local g = Instance.new("UIGradient")
+	g.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(0,0,0)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(180,0,0))
+	})
+	g.Rotation = 45
+	g.Parent = obj
 end
 
-local function stroke(obj,t,color,tr)
-
-	local s = Instance.new("UIStroke")
-	s.Thickness = t
-	s.Color = color
-	s.Transparency = tr or 0.2
-	s.Parent = obj
+local function round(obj,r)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0,r)
+	c.Parent = obj
 end
 
 --------------------------------------------------
@@ -321,265 +216,38 @@ end
 
 local toggleBtn = Instance.new("TextButton")
 toggleBtn.Parent = gui
-
 toggleBtn.Size = UDim2.fromOffset(46,46)
 toggleBtn.Position = UDim2.new(1,-70,0,120)
 
 toggleBtn.Text = "⇩"
 toggleBtn.Font = Enum.Font.GothamBold
 toggleBtn.TextSize = 22
+toggleBtn.TextColor3 = Color3.fromRGB(255,255,255)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(10,10,10)
 
-toggleBtn.BackgroundColor3 = GLASS_BG
-toggleBtn.TextColor3 = TEXT
-toggleBtn.AutoButtonColor = false
-
-round(toggleBtn,23)
-stroke(toggleBtn,1.5,BLUE,0.15)
+round(toggleBtn, 23)
+gradient(toggleBtn)
 
 --------------------------------------------------
--- MAIN FRAME
+-- PANEL
 --------------------------------------------------
 
 local frame = Instance.new("Frame")
 frame.Parent = gui
-
 frame.Position = UDim2.new(1,-280,0,170)
 frame.Size = UDim2.fromOffset(240,280)
-
-frame.BackgroundColor3 = GLASS_BG
+frame.BackgroundColor3 = Color3.fromRGB(10,10,10)
 frame.Visible = false
 
-round(frame,16)
-stroke(frame,1.6,BLUE,0.2)
+round(frame, 16)
+gradient(frame)
 
 --------------------------------------------------
--- HEADER
---------------------------------------------------
-
-local header = Instance.new("Frame")
-header.Parent = frame
-
-header.Size = UDim2.new(1,0,0,40)
-header.BackgroundTransparency = 1
-
-local minusBtn = Instance.new("TextButton")
-minusBtn.Parent = header
-
-minusBtn.Size = UDim2.fromOffset(40,32)
-minusBtn.Position = UDim2.fromOffset(6,4)
-
-minusBtn.Text = "-"
-minusBtn.Font = Enum.Font.GothamBold
-minusBtn.TextSize = 18
-
-minusBtn.BackgroundColor3 = GLASS_BG
-minusBtn.TextColor3 = TEXT
-minusBtn.AutoButtonColor = false
-
-round(minusBtn,8)
-stroke(minusBtn,1,BLUE,0.25)
-
-local plusBtn = minusBtn:Clone()
-plusBtn.Parent = header
-plusBtn.Text = "+"
-plusBtn.Position = UDim2.new(1,-46,0,4)
-
-local distanceLabel = Instance.new("TextLabel")
-distanceLabel.Parent = header
-
-distanceLabel.Size = UDim2.new(1,-100,1,0)
-distanceLabel.Position = UDim2.fromOffset(50,0)
-
-distanceLabel.Text = "Distance: "..distance
-distanceLabel.TextColor3 = TEXT
-distanceLabel.Font = Enum.Font.GothamBold
-distanceLabel.TextSize = 14
-distanceLabel.BackgroundTransparency = 1
-
---------------------------------------------------
--- PLAYER LIST
---------------------------------------------------
-
-local scroll = Instance.new("ScrollingFrame")
-scroll.Parent = frame
-
-scroll.Position = UDim2.fromOffset(0,50)
-scroll.Size = UDim2.new(1,0,1,-50)
-
-scroll.CanvasSize = UDim2.new(0,0,0,0)
-scroll.ScrollBarThickness = 4
-scroll.BackgroundTransparency = 1
-
-local layout = Instance.new("UIListLayout")
-layout.Parent = scroll
-layout.Padding = UDim.new(0,6)
-
---------------------------------------------------
--- LIST REFRESH
---------------------------------------------------
-
-local function refreshList()
-
-	for _,c in ipairs(scroll:GetChildren()) do
-		if c:IsA("TextButton") then
-			c:Destroy()
-		end
-	end
-
-	for _,p in ipairs(Players:GetPlayers()) do
-
-		if p ~= LocalPlayer then
-
-			local active =
-				trackedTargets[p.Name] ~= nil
-
-			local btn = Instance.new("TextButton")
-			btn.Parent = scroll
-
-			btn.Size = UDim2.new(1,-10,0,32)
-
-			btn.Text = p.Name
-			btn.Font = Enum.Font.Gotham
-			btn.TextSize = 14
-
-			btn.TextColor3 = TEXT
-			btn.BackgroundColor3 =
-				active and ACTIVE_BG or GLASS_BG
-
-			btn.AutoButtonColor = false
-
-			round(btn,10)
-			stroke(
-				btn,
-				1,
-				active and BLUE or MUTED,
-				0.3
-			)
-
-			btn.MouseButton1Click:Connect(function()
-
-				if active then
-					stopBring(p.Name)
-				else
-					startBring(p.Name)
-				end
-
-				refreshList()
-			end)
-		end
-	end
-
-	scroll.CanvasSize =
-		UDim2.new(
-			0,
-			0,
-			0,
-			layout.AbsoluteContentSize.Y + 6
-		)
-end
-
---------------------------------------------------
--- PLAYER EVENTS
---------------------------------------------------
-
-Players.PlayerAdded:Connect(function(p)
-
-	if AUTO_REJOIN then
-
-		local mem = targetMemory[p.Name]
-
-		if mem and tick()-mem < MEMORY_TIME then
-			startBring(p.Name)
-		end
-	end
-
-	refreshList()
-end)
-
-Players.PlayerRemoving:Connect(function(p)
-
-	untrackPlayer(p.Name)
-
-	refreshList()
-end)
-
---------------------------------------------------
--- DRAG SYSTEM
---------------------------------------------------
-
-local dragging = false
-local dragInput
-local dragStart
-local startPos
-
-toggleBtn.InputBegan:Connect(function(input)
-
-	if input.UserInputType ==
-		Enum.UserInputType.MouseButton1
-	or input.UserInputType ==
-		Enum.UserInputType.Touch then
-
-		dragging = true
-		dragInput = input
-		dragStart = input.Position
-		startPos = toggleBtn.Position
-
-		input.Changed:Connect(function()
-
-			if input.UserInputState ==
-				Enum.UserInputState.End then
-
-				dragging = false
-			end
-		end)
-	end
-end)
-
-UIS.InputChanged:Connect(function(input)
-
-	if input == dragInput and dragging then
-
-		local delta = input.Position - dragStart
-
-		toggleBtn.Position = UDim2.new(
-			startPos.X.Scale,
-			startPos.X.Offset + delta.X,
-			startPos.Y.Scale,
-			startPos.Y.Offset + delta.Y
-		)
-
-		frame.Position = UDim2.fromOffset(
-			toggleBtn.AbsolutePosition.X
-				- frame.AbsoluteSize.X - 10,
-			toggleBtn.AbsolutePosition.Y
-		)
-	end
-end)
-
---------------------------------------------------
--- UI EVENTS
+-- TOGGLE
 --------------------------------------------------
 
 toggleBtn.MouseButton1Click:Connect(function()
 	frame.Visible = not frame.Visible
 end)
 
-plusBtn.MouseButton1Click:Connect(function()
-
-	distance += 1
-	distanceLabel.Text = "Distance: "..distance
-end)
-
-minusBtn.MouseButton1Click:Connect(function()
-
-	distance = math.max(1,distance-1)
-	distanceLabel.Text = "Distance: "..distance
-end)
-
---------------------------------------------------
--- INIT
---------------------------------------------------
-
-refreshList()
-
-print("⚡ Loopbring V3 Loaded")
+print("⚡ Loopbring V4 Loaded (Stable + Gradient UI)")

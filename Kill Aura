@@ -1,34 +1,54 @@
--- ⚡ FOCUSED AURA (HITBOX ENHANCED)
+-- ⚡ FOCUSED AURA V2 (PRECISION LAYER / NO CONFLICT MODE)
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
 
+--------------------------------------------------
 -- CONFIG
+--------------------------------------------------
+
 local RANGE = 30
 local TOUCH_BURST = 2
-local AURA_RATE = 1/25
+local AURA_RATE = 1/20 -- slightly lighter, avoids fighting main aura
+
+--------------------------------------------------
+-- STATE
+--------------------------------------------------
 
 local lastAura = 0
 
+--------------------------------------------------
 -- HELPERS
-local function getHRP(plr)
-	local c = plr.Character
-	return c and c:FindFirstChild("HumanoidRootPart")
+--------------------------------------------------
+
+local function getHRP(char)
+	return char and char:FindFirstChild("HumanoidRootPart")
 end
 
--- 🎯 BEST TARGET (same logic, keep it)
-local function getBestTargetChar()
-	local myRoot = getHRP(LocalPlayer)
+--------------------------------------------------
+-- SHARED TARGET (IMPORTANT FIX)
+-- instead of re-computing, we *prefer external target*
+--------------------------------------------------
+
+local function getTarget()
+	-- 🔥 PRIORITY: use shared aura target if exists
+	if _G.CurrentAuraTarget then
+		return _G.CurrentAuraTarget
+	end
+
+	-- fallback
+	local myChar = LocalPlayer.Character
+	local myRoot = getHRP(myChar)
 	if not myRoot then return end
 
-	local bestChar = nil
+	local bestChar
 	local bestDist = RANGE
 
 	for _, p in ipairs(Players:GetPlayers()) do
 		if p ~= LocalPlayer then
-			local r = getHRP(p)
+			local r = getHRP(p.Character)
 			if r then
 				local dist = (r.Position - myRoot.Position).Magnitude
 				if dist < bestDist then
@@ -42,56 +62,56 @@ local function getBestTargetChar()
 	return bestChar
 end
 
+--------------------------------------------------
+-- TOUCH FUNCTION (UNCHANGED BUT CLEANER)
+--------------------------------------------------
+
 local function tap(toolPart, enemyPart)
-	for i = 1, TOUCH_BURST do
+	for _ = 1, TOUCH_BURST do
 		firetouchinterest(toolPart, enemyPart, 0)
 		firetouchinterest(toolPart, enemyPart, 1)
 	end
 end
 
--- ⚡ CORE LOOP
-RunService.Heartbeat:Connect(function()
+--------------------------------------------------
+-- MAIN LOOP (NO HEARTBEAT DESYNC)
+--------------------------------------------------
 
-	local char = LocalPlayer.Character
-	if not char then return end
+RunService.Heartbeat:Connect(function()
 
 	local now = os.clock()
 	if now - lastAura < AURA_RATE then return end
 	lastAura = now
 
-	local targetChar = getBestTargetChar()
+	local char = LocalPlayer.Character
+	if not char then return end
+
+	local targetChar = getTarget()
 	if not targetChar then return end
 
-	-- 🔥 USE HITBOX ENGINE IF AVAILABLE
-	local partsToHit = nil
+	-- optional expanded hitbox support (safe)
+	local partsToHit
 
 	if _G.GetExpandedParts then
 		partsToHit = _G.GetExpandedParts(targetChar)
 	end
 
-	-- fallback if hitbox not loaded
 	if not partsToHit or #partsToHit == 0 then
-		local hrp = targetChar:FindFirstChild("HumanoidRootPart")
+		local hrp = getHRP(targetChar)
 		if not hrp then return end
 		partsToHit = {hrp}
 	end
 
-	-- ⚡ stabilization (important)
-	RunService.Heartbeat:Wait()
-
+	-- 🔥 NO FRAME YIELD INSIDE LOOP (FIXED)
 	for _, tool in ipairs(char:GetChildren()) do
 		if tool:IsA("Tool") then
 
-			if tool.Parent ~= char then
-				tool.Parent = char
-			end
-
 			local touch = tool:FindFirstChildWhichIsA("TouchTransmitter", true)
-			touch = touch and touch.Parent
+			local part = touch and touch.Parent
 
-			if touch then
-				for _, part in ipairs(partsToHit) do
-					tap(touch, part)
+			if part then
+				for _, enemyPart in ipairs(partsToHit) do
+					tap(part, enemyPart)
 				end
 			end
 		end
@@ -99,4 +119,4 @@ RunService.Heartbeat:Connect(function()
 
 end)
 
-print("⚡ Focused Aura (Hitbox Enhanced) Loaded")
+print("⚡ Focused Aura V2 Loaded (Precision Layer)")

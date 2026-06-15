@@ -1,4 +1,4 @@
--- ⚡ RTX BURST AURA V3 (STABLE + CONSISTENT)
+-- ⚡ RTX BURST AURA V4 (EVENT-DRIVEN + ADAPTIVE)
 
 --------------------------------------------------
 -- SERVICES
@@ -22,6 +22,10 @@ local REMOTES_PER_TOOL = 2
 local TARGET_REFRESH = 0.08
 local ATTACK_INTERVAL = 0.06
 
+-- 🔥 NEW: equip burst tuning
+local EQUIP_BURST_MIN = 2
+local EQUIP_BURST_MAX = 4
+
 --------------------------------------------------
 -- STATE
 --------------------------------------------------
@@ -40,6 +44,8 @@ local currentTargetParts
 local lastTargetUpdate = 0
 local lastAttack = 0
 
+local equippedTools = {}
+
 --------------------------------------------------
 -- CHARACTER
 --------------------------------------------------
@@ -51,6 +57,9 @@ local function bindCharacter(char)
 	if char and not localRoot then
 		localRoot = char:WaitForChild("HumanoidRootPart", 5)
 	end
+
+	-- 🔥 reset equip state
+	table.clear(equippedTools)
 end
 
 LocalPlayer.CharacterAdded:Connect(bindCharacter)
@@ -59,11 +68,10 @@ if LocalPlayer.Character then
 end
 
 --------------------------------------------------
--- TOOL CACHE (LAZY + SAFE)
+-- TOOL CACHE (ENHANCED)
 --------------------------------------------------
 
 local function cacheTools()
-
 	table.clear(toolCache)
 	table.clear(touchCache)
 	table.clear(remoteCache)
@@ -75,7 +83,6 @@ local function cacheTools()
 		if obj:IsA("Tool") then
 			table.insert(toolCache, obj)
 
-			-- wait-safe remote detection
 			local touch = obj:FindFirstChildWhichIsA("TouchTransmitter", true)
 			if touch and touch.Parent and touch.Parent:IsA("BasePart") then
 				touchCache[obj] = touch.Parent
@@ -90,26 +97,40 @@ local function cacheTools()
 end
 
 --------------------------------------------------
--- TOOL TRACKING (DEBOUNCED)
+-- TOOL TRACKING + EQUIP BURST (NEW CORE FEATURE)
 --------------------------------------------------
 
 local function hookCharacter(char)
-	cacheTools()
 
-	local function rescan()
-		task.wait(0.05)
-		cacheTools()
-	end
+	cacheTools()
 
 	char.ChildAdded:Connect(function(obj)
 		if obj:IsA("Tool") then
-			rescan()
+
+			task.wait(0.03)
+			cacheTools()
+
+			-- 🔥 EQUIP BURST (NEW)
+			local remote = obj:FindFirstChild("FightEvent")
+			if remote and remote:IsA("RemoteEvent") then
+
+				local burst = math.random(EQUIP_BURST_MIN, EQUIP_BURST_MAX)
+
+				task.spawn(function()
+					for _ = 1, burst do
+						if remote.Parent then
+							remote:FireServer()
+						end
+						RunService.Heartbeat:Wait()
+					end
+				end)
+			end
 		end
 	end)
 
 	char.ChildRemoved:Connect(function(obj)
 		if obj:IsA("Tool") then
-			rescan()
+			task.defer(cacheTools)
 		end
 	end)
 end
@@ -144,7 +165,7 @@ local function buildParts(char)
 end
 
 --------------------------------------------------
--- TARGET UPDATE (LOCKED STABILITY)
+-- TARGET UPDATE
 --------------------------------------------------
 
 local function updateTarget()
@@ -195,7 +216,7 @@ local function updateTarget()
 end
 
 --------------------------------------------------
--- HIT ENGINE (STABLE BURST SPREAD)
+-- HIT ENGINE (SYNCHRONIZED + DEAD SAFE)
 --------------------------------------------------
 
 local function hitTarget()
@@ -209,7 +230,7 @@ local function hitTarget()
 		local touchPart = touchCache[tool]
 		local remote = remoteCache[tool]
 
-		-- TOUCH SYSTEM
+		-- 🔥 TOUCH SYSTEM
 		if touchPart then
 			for _, targetPart in ipairs(currentTargetParts) do
 				for _ = 1, TOUCHES_PER_PART do
@@ -219,22 +240,17 @@ local function hitTarget()
 			end
 		end
 
-		-- REMOTE SYSTEM (SAFE SPREAD)
-		if remote then
-			task.spawn(function()
-				for _ = 1, REMOTES_PER_TOOL do
-					if remote.Parent then
-						remote:FireServer()
-						RunService.Heartbeat:Wait()
-					end
-				end
-			end)
+		-- 🔥 REMOTE SYSTEM (SYNCED BURST)
+		if remote and remote.Parent then
+			for _ = 1, REMOTES_PER_TOOL do
+				remote:FireServer()
+			end
 		end
 	end
 end
 
 --------------------------------------------------
--- MAIN LOOP
+-- MAIN LOOP (SMART GATING)
 --------------------------------------------------
 
 RunService.PreSimulation:Connect(function()
@@ -242,12 +258,17 @@ RunService.PreSimulation:Connect(function()
 	updateTarget()
 
 	local now = os.clock()
+
 	if now - lastAttack < ATTACK_INTERVAL then return end
+
+	-- 🔥 STOP SPAM IF NO TARGET
+	if not currentTarget or not currentTargetHum or currentTargetHum.Health <= 0 then
+		return
+	end
+
 	lastAttack = now
 
-	if currentTarget then
-		hitTarget()
-	end
+	hitTarget()
 end)
 
-print("⚡ RTX Burst Aura V3 Loaded (Stable)")
+print("⚡ RTX Burst Aura V4 Loaded (Equip Burst + Synchronized)")

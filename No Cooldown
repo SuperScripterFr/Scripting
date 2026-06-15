@@ -1,49 +1,37 @@
--- ⚡ NO COOLDOWN CORE V2 (Timing Authority)
+-- ⚡ NO COOLDOWN (STABLE TIMING VERSION)
 
 local RunService = game:GetService("RunService")
 
--- Break waits (keep your power)
-hookfunction(wait, function()
-	return RunService.PostSimulation:Wait()
-end)
+--------------------------------------------------
+-- SAFE FAST YIELD (NO ENGINE DISRUPTION)
+--------------------------------------------------
 
-hookfunction(task.wait, function()
-	return RunService.PostSimulation:Wait()
-end)
-
-hookfunction(delay, function(_,f)
-	task.spawn(f)
-end)
-
-hookfunction(spawn, function(f)
-	task.spawn(f)
-end)
-
--- ⭐ GLOBAL ULTRA TICK SYSTEM
-_G.UltraTick = _G.UltraTick or {}
-
-local TICK_RATE = 1/75 -- safe insane speed
-
-local acc = 0
-local listeners = {}
-
-function _G.UltraTick.Bind(fn)
-	table.insert(listeners, fn)
+local function fastYield()
+	-- only 1 frame sync, not double sync (prevents lag stacking)
+	RunService.Heartbeat:Wait()
 end
 
-RunService.Heartbeat:Connect(function(dt)
+--------------------------------------------------
+-- SAFE HOOKING (LESS INTERFERENCE)
+--------------------------------------------------
 
-	acc += dt
+local oldWait = wait
+local oldTaskWait = task.wait
 
-	while acc >= TICK_RATE do
-		acc -= TICK_RATE
-
-		for i = 1,#listeners do
-			listeners[i]()
-		end
-
+hookfunction(oldWait, function(t)
+	if t and t > 0 then
+		fastYield()
+	else
+		return oldWait(t)
 	end
-
 end)
 
-print("⚡ No Cooldown Core Online")
+hookfunction(oldTaskWait, function(t)
+	if t and t > 0 then
+		fastYield()
+	else
+		return oldTaskWait(t)
+	end
+end)
+
+print("⚡ No Cooldown (Stable Version) Loaded")

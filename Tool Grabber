@@ -1,4 +1,4 @@
--- ⚡ RTX TOOL GRABBER V5 (STABLE + FAST)
+-- ⚡ RTX TOOL GRABBER V6 (INSTANT + RESILIENT)
 
 ---------------------------------------------------
 -- SERVICES
@@ -17,33 +17,42 @@ local Tycoons = workspace:WaitForChild("Tycoons")
 local PAD_RANGE = 1250
 local TOUCH_BURST = 2
 
+local SPAWN_BOOST_TIME = 1.5 -- 🔥 ultra-fast mode after respawn
+local SCAN_INTERVAL = 0.08   -- continuous pad refresh
+
 ---------------------------------------------------
 -- STATE
 ---------------------------------------------------
 
 local padsByBase = {}
+
 local currentCharacter
 local currentRoot
 
-local running = false
-local queued = false
+local lastScan = 0
+local spawnTime = 0
 
 ---------------------------------------------------
--- CHARACTER TRACKING (SAFE + FAST)
+-- CHARACTER TRACKING
 ---------------------------------------------------
 
 local function bindCharacter(char)
 	currentCharacter = char
-	currentRoot = char and char:FindFirstChild("HumanoidRootPart")
+	currentRoot = nil
 
-	if char and not currentRoot then
+	if not char then return end
+
+	currentRoot = char:FindFirstChild("HumanoidRootPart")
+	if not currentRoot then
 		currentRoot = char:WaitForChild("HumanoidRootPart", 5)
 	end
 
-	-- 🔥 trigger instant acquire after spawn
+	spawnTime = os.clock()
+
+	-- 🔥 immediate burst attempt (no delay wait)
 	task.defer(function()
-		if currentRoot then
-			task.wait(0.1) -- tiny stabilization window (prevents nil HRP race)
+		for _ = 1, 3 do
+			task.wait(0.01)
 			triggerAcquire()
 		end
 	end)
@@ -82,7 +91,7 @@ local function hasTool(pattern)
 end
 
 ---------------------------------------------------
--- PAD REGISTER (CLEAN + RELIABLE)
+-- PAD REGISTER (FAST + SAFE)
 ---------------------------------------------------
 
 local function registerPad(pad)
@@ -107,7 +116,7 @@ local function registerPad(pad)
 end
 
 ---------------------------------------------------
--- INITIAL SCAN (FAST PATH)
+-- INITIAL + LIVE SCAN (CONTINUOUS READY STATE)
 ---------------------------------------------------
 
 for _, obj in ipairs(Tycoons:GetDescendants()) do
@@ -116,24 +125,17 @@ for _, obj in ipairs(Tycoons:GetDescendants()) do
 	end
 end
 
----------------------------------------------------
--- LIVE SCAN (NO SPAM TRIGGERS)
----------------------------------------------------
-
 Tycoons.DescendantAdded:Connect(function(obj)
 	if obj:IsA("TouchTransmitter") then
 		local pad = obj.Parent
 		if pad and pad:IsA("BasePart") then
 			registerPad(pad)
-
-			-- debounce trigger
-			task.defer(triggerAcquire)
 		end
 	end
 end)
 
 ---------------------------------------------------
--- PAD PICKER (SAFE CLEANUP)
+-- PAD PICKER (FAST CLEAN)
 ---------------------------------------------------
 
 local function getClosestPad(baseName)
@@ -168,7 +170,7 @@ local function getClosestPad(baseName)
 end
 
 ---------------------------------------------------
--- TOUCH (LIGHTER + MORE RELIABLE)
+-- TOUCH ENGINE (FAST + LOW LATENCY BURST)
 ---------------------------------------------------
 
 local function tap(root, pad)
@@ -179,7 +181,7 @@ local function tap(root, pad)
 end
 
 ---------------------------------------------------
--- BUILD WAVE (FAST SHORT-CIRCUIT)
+-- RULES
 ---------------------------------------------------
 
 local toolRules = {
@@ -191,11 +193,16 @@ local toolRules = {
 	{pattern="Punch", base="Kong"},
 }
 
+---------------------------------------------------
+-- WAVE BUILDER (SPAWN BOOST AWARE)
+---------------------------------------------------
+
 local function buildWave()
 	local wave = {}
 
 	for _, rule in ipairs(toolRules) do
 		if not hasTool(rule.pattern) then
+
 			if rule.base == "ALL" then
 				for baseName in pairs(padsByBase) do
 					local pad = getClosestPad(baseName)
@@ -205,6 +212,7 @@ local function buildWave()
 				local pad = getClosestPad(rule.base)
 				if pad then wave[pad] = true end
 			end
+
 		end
 	end
 
@@ -212,20 +220,21 @@ local function buildWave()
 end
 
 ---------------------------------------------------
--- MAIN ENGINE (NO STACKING, GUARANTEED SINGLE RUN)
+-- MAIN ENGINE (CONTINUOUS + LOW DELAY)
 ---------------------------------------------------
 
 function triggerAcquire()
-	if running then
-		queued = true
+	local now = os.clock()
+
+	-- prevent spam stacking but allow fast respawn bursts
+	if triggerAcquire._running then
 		return
 	end
 
-	running = true
+	triggerAcquire._running = true
 
 	task.spawn(function()
-		repeat
-			queued = false
+		for _ = 1, 6 do -- 🔥 short burst window instead of long loop
 
 			local root = currentRoot
 			if not root then break end
@@ -240,24 +249,39 @@ function triggerAcquire()
 			end
 
 			RunService.Heartbeat:Wait()
+		end
 
-		until not queued
-
-		running = false
+		triggerAcquire._running = false
 	end)
 end
 
 ---------------------------------------------------
--- GUIDE EVENT HOOK (SAFE VERSION)
+-- CONTINUOUS BACKGROUND SCANNER (KEY FIX)
 ---------------------------------------------------
 
-local GuideEvent = workspace:FindFirstChild("GuideEvent", true)
+RunService.Heartbeat:Connect(function()
+	local now = os.clock()
 
-if GuideEvent and GuideEvent:IsA("RemoteEvent") then
-	GuideEvent.OnClientEvent:Connect(function()
-		task.defer(triggerAcquire)
-	end)
-end
+	-- 🔥 always “ready state scanning” (fixes delay after respawn)
+	if now - lastScan > SCAN_INTERVAL then
+		lastScan = now
+
+		if currentRoot then
+			local wave = buildWave()
+
+			if next(wave) then
+				for pad in pairs(wave) do
+					tap(currentRoot, pad)
+				end
+			end
+		end
+	end
+
+	-- 🔥 spawn boost phase (first seconds = instant acquisition pressure)
+	if spawnTime > 0 and (now - spawnTime) < SPAWN_BOOST_TIME then
+		triggerAcquire()
+	end
+end)
 
 ---------------------------------------------------
 -- STARTUP
@@ -265,4 +289,4 @@ end
 
 task.defer(triggerAcquire)
 
-print("⚡ RTX Tool Grabber V5 Loaded (Stable)")
+print("⚡ RTX Tool Grabber V6 Loaded (Instant + Stable)")

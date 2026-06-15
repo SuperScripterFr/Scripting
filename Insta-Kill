@@ -19,11 +19,11 @@ local RANGE_SQ = RANGE * RANGE
 local TOUCHES_PER_PART = 2
 local REMOTES_PER_TOOL = 2
 
-local TARGET_REFRESH = 0.08
-local ATTACK_INTERVAL = 0.06
+local TARGET_REFRESH = 0.01
+local ATTACK_INTERVAL = 0.1
 
 -- 🔥 NEW: equip burst tuning
-local EQUIP_BURST_MIN = 2
+local EQUIP_BURST_MIN = 4
 local EQUIP_BURST_MAX = 4
 
 --------------------------------------------------
@@ -244,6 +244,7 @@ local function hitTarget()
 		if remote and remote.Parent then
 			for _ = 1, REMOTES_PER_TOOL do
 				remote:FireServer()
+        remote:FireServer()
 			end
 		end
 	end

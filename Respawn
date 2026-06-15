@@ -1,4 +1,4 @@
--- ⚡ QUANTUM FAST RESPAWN V4 (FIXED + RELIABLE)
+-- ⚡ QUANTUM FAST RESPAWN V5 (LOW LATENCY + BACKUP SYSTEM)
 
 ----------------------------------------------------
 -- SERVICES
@@ -18,6 +18,10 @@ local GuideEvent = ReplicatedStorage:FindFirstChild("Guide")
 local TOGGLE_KEY = Enum.KeyCode.R
 local HEALTH_THRESHOLD = 6
 
+-- 🔥 latency safety windows
+local FAILSAFE_TIME = 0.35 -- if nothing happens, force fallback
+local BACKUP_DELAY = 0.12  -- stagger backup to avoid double-fire spam
+
 ----------------------------------------------------
 -- STATE
 ----------------------------------------------------
@@ -27,8 +31,8 @@ local firing = false
 
 local connections = {}
 
-local currentHumanoid = nil
-local characterToken = 0 -- 🔥 prevents old character leaks
+local characterToken = 0
+local lastRequestTime = 0
 
 ----------------------------------------------------
 -- CLEANUP
@@ -49,7 +53,7 @@ local function track(conn)
 end
 
 ----------------------------------------------------
--- SAFE FIRE (FIXED TIMING)
+-- PRIMARY + BACKUP RESPAWN ENGINE
 ----------------------------------------------------
 
 local function fireRespawn()
@@ -57,21 +61,54 @@ local function fireRespawn()
 	if firing then return end
 	firing = true
 
+	lastRequestTime = os.clock()
+	characterToken += 1
+
 	disconnectAll()
+
+	------------------------------------------------
+	-- PRIMARY PATH (REMOTE)
+	------------------------------------------------
 
 	if GuideEvent then
 		GuideEvent:FireServer()
-	else
-		player:LoadCharacter()
 	end
 
-	task.delay(0.15, function()
+	------------------------------------------------
+	-- BACKUP PATH (LOCAL GUARANTEE)
+	------------------------------------------------
+
+	task.delay(BACKUP_DELAY, function()
+		if active then
+			-- if character hasn't changed yet, backup trigger
+			player:LoadCharacter()
+		end
+	end)
+
+	------------------------------------------------
+	-- FAILSAFE RECHECK (VERY IMPORTANT FOR HIGH PING)
+	------------------------------------------------
+
+	task.delay(FAILSAFE_TIME, function()
+		if not active then return end
+
+		-- if still same state (respawn didn't complete fast enough)
+		if os.clock() - lastRequestTime >= FAILSAFE_TIME then
+			player:LoadCharacter()
+		end
+	end)
+
+	------------------------------------------------
+	-- UNLOCK
+	------------------------------------------------
+
+	task.delay(0.2, function()
 		firing = false
 	end)
 end
 
 ----------------------------------------------------
--- CHARACTER HOOK (ROBUST VERSION)
+-- CHARACTER HOOK
 ----------------------------------------------------
 
 local function hookCharacter(char)
@@ -84,37 +121,32 @@ local function hookCharacter(char)
 	local hum = char:WaitForChild("Humanoid", 5)
 	if not hum then return end
 
-	currentHumanoid = hum
-
 	local triggered = false
 
 	local function trigger()
 		if triggered then return end
 		if not active then return end
-		if characterToken ~= myToken then return end -- 🔥 prevents old character calls
+		if characterToken ~= myToken then return end
 
 		triggered = true
 		fireRespawn()
 	end
 
-	-- health check
 	track(hum.HealthChanged:Connect(function(hp)
 		if hp <= HEALTH_THRESHOLD then
 			trigger()
 		end
 	end))
 
-	-- death fallback
 	track(hum.Died:Connect(trigger))
 end
 
 ----------------------------------------------------
--- CHARACTER HANDLER (FIXED ORDERING)
+-- SAFE CHARACTER HANDLER
 ----------------------------------------------------
 
-local function tryHookCharacter()
+local function tryHook()
 	if not active then return end
-
 	local char = player.Character
 	if char then
 		hookCharacter(char)
@@ -134,12 +166,11 @@ end)
 ----------------------------------------------------
 
 local function setState(state)
-
 	active = state
 
 	if active then
 		print("⚡ Respawn ON")
-		tryHookCharacter()
+		tryHook()
 	else
 		print("⚡ Respawn OFF")
 		disconnectAll()
@@ -158,7 +189,7 @@ UserInputService.InputBegan:Connect(function(input, gp)
 end)
 
 ----------------------------------------------------
--- UI
+-- UI (unchanged logic)
 ----------------------------------------------------
 
 local gui = Instance.new("ScreenGui")
@@ -207,4 +238,4 @@ end)
 
 updateButton()
 
-print("⚡ Quantum Fast Respawn V4 Loaded (FIXED)")
+print("⚡ Quantum Fast Respawn V5 Loaded (LOW LATENCY + BACKUP)")

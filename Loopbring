@@ -1,4 +1,4 @@
--- ⚡ LOOPBRING V4 (STABLE + RESPAWN SAFE)
+--// ⚡ LOOPBRING V4 (RESPAWN STABLE + NO TUG-OF-WAR)
 
 --------------------------------------------------
 -- SERVICES
@@ -14,11 +14,12 @@ local LocalPlayer = Players.LocalPlayer
 -- CONFIG
 --------------------------------------------------
 
-local distance = 3
+local distance = 2
+
 local AUTO_REJOIN = true
 local MEMORY_TIME = 300
 
-local ACTIVE_INTERVAL = 0.02
+local ACTIVE_INTERVAL = 0.015
 local IDLE_INTERVAL = 0.08
 
 --------------------------------------------------
@@ -30,64 +31,63 @@ local targetMemory = {}
 
 local localCharacter
 local localRoot
-local localHumanoid
+
+-- 🔥 CRITICAL FIX: respawn generation lock
+local characterGeneration = 0
 
 --------------------------------------------------
--- CHARACTER (LOCK SYSTEM FIX)
+-- LOCAL CHARACTER BIND (FIXED)
 --------------------------------------------------
-
-local charVersion = 0
 
 local function bindLocalCharacter(char)
 
-	charVersion += 1
-	local myVersion = charVersion
+	characterGeneration += 1
+	local myGen = characterGeneration
 
 	localCharacter = char
 	localRoot = nil
-	localHumanoid = nil
 
 	if not char then return end
 
-	local root = char:FindFirstChild("HumanoidRootPart")
-	local hum = char:FindFirstChildOfClass("Humanoid")
+	local root = char:WaitForChild("HumanoidRootPart", 5)
+	if not root then return end
 
-	if not root then
-		root = char:WaitForChild("HumanoidRootPart", 5)
-	end
-
-	if not hum then
-		hum = char:WaitForChild("Humanoid", 5)
-	end
-
-	-- 🔥 only apply if still current character
-	if charVersion ~= myVersion then return end
-
-	localRoot = root
-	localHumanoid = hum
+	-- 🔥 delay stabilization prevents spawn physics fight
+	task.delay(0.1, function()
+		if characterGeneration == myGen then
+			localRoot = root
+		end
+	end)
 end
 
 LocalPlayer.CharacterAdded:Connect(bindLocalCharacter)
-
 if LocalPlayer.Character then
 	bindLocalCharacter(LocalPlayer.Character)
 end
 
 --------------------------------------------------
--- TARGET SYSTEM
+-- TARGET DATA
 --------------------------------------------------
 
-local function createTarget(player)
+local function createTargetData(player)
 	return {
 		Player = player,
 		Character = nil,
 		Root = nil,
 		Humanoid = nil,
 		Alive = false,
+		gen = 0, -- 🔥 per-target generation
 	}
 end
 
-local function bindTarget(data, char)
+--------------------------------------------------
+-- SAFE CHARACTER BIND
+--------------------------------------------------
+
+local function bindTargetCharacter(data, char)
+
+	data.gen += 1
+	local myGen = data.gen
 
 	data.Character = char
 	data.Root = nil
@@ -96,44 +96,54 @@ local function bindTarget(data, char)
 
 	if not char then return end
 
-	local root = char:FindFirstChild("HumanoidRootPart")
-	local hum = char:FindFirstChildOfClass("Humanoid")
+	local root = char:WaitForChild("HumanoidRootPart", 5)
+	local hum = char:WaitForChild("Humanoid", 5)
 
-	if not root then root = char:WaitForChild("HumanoidRootPart", 5) end
-	if not hum then hum = char:WaitForChild("Humanoid", 5) end
+	-- 🔥 ignore stale respawn frames
+	if data.gen ~= myGen then return end
+	if not root or not hum then return end
 
 	data.Root = root
 	data.Humanoid = hum
-	data.Alive = hum and hum.Health > 0
+	data.Alive = hum.Health > 0
 
-	if hum then
-		hum.Died:Connect(function()
-			data.Alive = false
-			data.Root = nil
-		end)
-	end
-end
-
-local function trackPlayer(player)
-
-	local data = createTarget(player)
-	trackedTargets[player.Name] = data
-
-	if player.Character then
-		task.spawn(bindTarget, data, player.Character)
-	end
-
-	player.CharacterAdded:Connect(function(char)
-		bindTarget(data, char)
+	hum.Died:Connect(function()
+		data.Alive = false
+		data.Root = nil
 	end)
 end
 
-local function startBring(name)
+--------------------------------------------------
+-- TRACKING
+--------------------------------------------------
 
+local function trackPlayer(player)
+
+	local data = createTargetData(player)
+	trackedTargets[player.Name] = data
+
+	if player.Character then
+		task.spawn(bindTargetCharacter, data, player.Character)
+	end
+
+	player.CharacterAdded:Connect(function(char)
+		bindTargetCharacter(data, char)
+	end)
+end
+
+local function untrackPlayer(name)
+	trackedTargets[name] = nil
+end
+
+--------------------------------------------------
+-- START / STOP
+--------------------------------------------------
+
+local function startBring(name)
 	local plr = Players:FindFirstChild(name)
 	if not plr then return end
 
-	targetMemory[name] = os.clock()
+	targetMemory[name] = tick()
 
 	if not trackedTargets[name] then
 		trackPlayer(plr)
@@ -146,73 +156,70 @@ local function stopBring(name)
 end
 
 --------------------------------------------------
--- ENGINE
+-- ENGINE LOOP
 --------------------------------------------------
 
 local lastUpdate = 0
 
 RunService.PreSimulation:Connect(function()
 
-	if not localRoot then return end
+	local myRoot = localRoot
+	if not myRoot then return end
 
 	local activeCount = 0
 	for _ in pairs(trackedTargets) do
 		activeCount += 1
 	end
 
-	local interval = activeCount > 0 and ACTIVE_INTERVAL or IDLE_INTERVAL
-	local now = os.clock()
+	local interval = (activeCount > 0) and ACTIVE_INTERVAL or IDLE_INTERVAL
 
+	local now = os.clock()
 	if now - lastUpdate < interval then return end
 	lastUpdate = now
 
-	local targetPos = localRoot.Position + localRoot.CFrame.LookVector * distance
+	--------------------------------------------------
+	-- target position
+	--------------------------------------------------
+
+	local targetPos =
+		myRoot.Position +
+		myRoot.CFrame.LookVector * distance
+
+	--------------------------------------------------
+	-- MOVE (SAFE GUARDED)
+	--------------------------------------------------
 
 	for _, data in pairs(trackedTargets) do
 
 		if not data.Alive then continue end
-		if not data.Root then continue end
 
-		-- 🔥 SAFETY CHECK (prevents respawn tug-of-war)
-		if not data.Root.Parent then
-			data.Root = nil
+		local root = data.Root
+		local hum = data.Humanoid
+
+		-- 🔥 full validity gate (IMPORTANT FIX)
+		if not root or not hum then continue end
+		if hum.Health <= 0 then continue end
+		if not root.Parent then continue end
+
+		-- 🔥 prevents respawn “ghost body tug”
+		if (root.Position - myRoot.Position).Magnitude > 500 then
 			continue
 		end
 
-		data.Root.CFrame =
-			CFrame.new(targetPos, localRoot.Position)
+		root.CFrame =
+			CFrame.new(targetPos, myRoot.Position)
 			* CFrame.Angles(0, math.rad(180), 0)
 	end
 end)
 
 --------------------------------------------------
--- UI (BLACK → RED GRADIENT)
+-- GUI (BLACK → RED GRADIENT)
 --------------------------------------------------
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "LoopbringGUI"
 gui.ResetOnSpawn = false
 gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-
-local function gradient(obj)
-	local g = Instance.new("UIGradient")
-	g.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(0,0,0)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(180,0,0))
-	})
-	g.Rotation = 45
-	g.Parent = obj
-end
-
-local function round(obj,r)
-	local c = Instance.new("UICorner")
-	c.CornerRadius = UDim.new(0,r)
-	c.Parent = obj
-end
-
---------------------------------------------------
--- TOGGLE BUTTON
---------------------------------------------------
 
 local toggleBtn = Instance.new("TextButton")
 toggleBtn.Parent = gui
@@ -222,32 +229,28 @@ toggleBtn.Position = UDim2.new(1,-70,0,120)
 toggleBtn.Text = "⇩"
 toggleBtn.Font = Enum.Font.GothamBold
 toggleBtn.TextSize = 22
+
+toggleBtn.BackgroundColor3 = Color3.fromRGB(10,0,0)
 toggleBtn.TextColor3 = Color3.fromRGB(255,255,255)
-toggleBtn.BackgroundColor3 = Color3.fromRGB(10,10,10)
 
-round(toggleBtn, 23)
-gradient(toggleBtn)
-
---------------------------------------------------
--- PANEL
---------------------------------------------------
+local grad = Instance.new("UIGradient")
+grad.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(0,0,0)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(170,0,0))
+})
+grad.Rotation = 45
+grad.Parent = toggleBtn
 
 local frame = Instance.new("Frame")
 frame.Parent = gui
-frame.Position = UDim2.new(1,-280,0,170)
 frame.Size = UDim2.fromOffset(240,280)
-frame.BackgroundColor3 = Color3.fromRGB(10,10,10)
-frame.Visible = false
+frame.Position = UDim2.fromOffset(100,200)
+frame.BackgroundColor3 = Color3.fromRGB(10,0,0)
 
-round(frame, 16)
-gradient(frame)
-
---------------------------------------------------
--- TOGGLE
---------------------------------------------------
-
-toggleBtn.MouseButton1Click:Connect(function()
-	frame.Visible = not frame.Visible
-end)
-
-print("⚡ Loopbring V4 Loaded (Stable + Gradient UI)")
+local frameGrad = Instance.new("UIGradient")
+frameGrad.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(0,0,0)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(90,0,0))
+})
+frameGrad.Rotation = 90
+frameGrad.Parent = frame

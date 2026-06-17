@@ -1,21 +1,24 @@
--- ⚡ No Cooldown
-
+-- ⚡ No Cooldown V6(7) (Cooldown Breaker + Combat Loop)
 local RunService = game:GetService("RunService")
 
 --================================================
 -- ⚡ GLOBAL COOLDOWN BREAKER (Original Power)
 --================================================
-local function fastYield()
-	RunService.PreSimulation:Wait()
-	RunService.Heartbeat:Wait()
-end
 
 hookfunction(wait, function()
-	fastYield()
+	return RunService.PostSimulation:Wait()
 end)
 
 hookfunction(task.wait, function()
-	fastYield()
+	return RunService.PostSimulation:Wait()
+end)
+
+hookfunction(delay, function(_,func)
+	task.spawn(func)
+end)
+
+hookfunction(spawn, function(func)
+	task.spawn(func)
 end)
 
 print("⚡ No Cooldown Running")

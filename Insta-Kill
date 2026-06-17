@@ -23,9 +23,9 @@ local TOUCHES_PER_PART = 3
 local REMOTES_PER_TOOL = 3
 
 -- update rates
-local TARGET_REFRESH = 0.05
-local IDLE_INTERVAL = 0.12
-local ACTIVE_INTERVAL = 0.06
+local TARGET_REFRESH = 0
+local IDLE_INTERVAL = 0
+local ACTIVE_INTERVAL = 0
 
 --------------------------------------------------
 -- INTERNALS

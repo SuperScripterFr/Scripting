@@ -188,7 +188,7 @@ local toolRules = {
 	{pattern="Energy Sword", base="Stone"},
 	{pattern="Staff", base="Magic"},
 	{pattern="Axe", base="Storm"},
-	{pattern="Fist", base="Robotic"},
+	{pattern="Fists", base="Robotic"},
 	{pattern="Claws", base="ALL"},
 	{pattern="Punch", base="Kong"},
 }

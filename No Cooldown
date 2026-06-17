@@ -1,37 +1,21 @@
--- ⚡ NO COOLDOWN (STABLE TIMING VERSION)
+-- ⚡ No Cooldown
 
 local RunService = game:GetService("RunService")
 
---------------------------------------------------
--- SAFE FAST YIELD (NO ENGINE DISRUPTION)
---------------------------------------------------
-
+--================================================
+-- ⚡ GLOBAL COOLDOWN BREAKER (Original Power)
+--================================================
 local function fastYield()
-	-- only 1 frame sync, not double sync (prevents lag stacking)
+	RunService.PreSimulation:Wait()
 	RunService.Heartbeat:Wait()
 end
 
---------------------------------------------------
--- SAFE HOOKING (LESS INTERFERENCE)
---------------------------------------------------
-
-local oldWait = wait
-local oldTaskWait = task.wait
-
-hookfunction(oldWait, function(t)
-	if t and t > 0 then
-		fastYield()
-	else
-		return oldWait(t)
-	end
+hookfunction(wait, function()
+	fastYield()
 end)
 
-hookfunction(oldTaskWait, function(t)
-	if t and t > 0 then
-		fastYield()
-	else
-		return oldTaskWait(t)
-	end
+hookfunction(task.wait, function()
+	fastYield()
 end)
 
-print("⚡ No Cooldown (Stable Version) Loaded")
+print("⚡ No Cooldown Running")

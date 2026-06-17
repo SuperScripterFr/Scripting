@@ -118,6 +118,24 @@ local function refreshTools()
 end
 
 ------------------------------------------------------------
+-- EQUIP BURST
+------------------------------------------------------------
+
+local EQUIP_BURST_ACTIVATIONS = 4
+
+local function burstActivateTool(tool)
+
+	for i = 1, EQUIP_BURST_ACTIVATIONS do
+
+		if tool.Parent then
+			pcall(tool.Activate, tool)
+		end
+
+		RunService.PreSimulation:Wait()
+	end
+end
+
+------------------------------------------------------------
 -- EQUIP
 ------------------------------------------------------------
 
@@ -151,9 +169,13 @@ local function equipTools(force)
 	for _,tool in ipairs(backpack:GetChildren()) do
 
 		if tool:IsA("Tool") then
-			tool.Parent = char
-			changed = true
-		end
+          tool.Parent = char
+          changed = true
+
+            task.spawn(function()
+	        burstActivateTool(tool)
+          end)
+	   end
 	end
 
 	--------------------------------------------------------

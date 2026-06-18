@@ -43,12 +43,12 @@ end
 -- CONFIG
 ------------------------------------------------------------
 
-local APS = 80
+local APS = 75
 local PULSE_INTERVAL = 1 / APS
 
 local RESPAWN_BURST_TIME = 2.0
 local TOUCH_ASSIST_RANGE = 14
-local TOUCH_ASSIST_BURST = 2
+local TOUCH_ASSIST_BURST = 1
 
 ------------------------------------------------------------
 -- STATE

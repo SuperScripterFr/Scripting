@@ -10,6 +10,7 @@ local TextChatService = game:GetService("TextChatService")
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local Lighting = game:GetService("Lighting")
+local Stats = game:GetService("Stats")
 
 -- ======= Config / Defaults (preserved) =======
 local DEFAULT_THEME = {
@@ -42,6 +43,8 @@ local function addRound(parent, radius)
 	rc.Parent = parent return rc 
 end
 
+local FlowBorders = {}
+
 local function addStroke(parent, color, thickness, transparency)
 	local stroke = Instance.new("UIStroke")
 	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
@@ -51,8 +54,38 @@ local function addStroke(parent, color, thickness, transparency)
 	stroke.LineJoinMode = Enum.LineJoinMode.Round
 	stroke.Parent = parent
 
+	local flow = Instance.new("UIGradient")
+	flow.Color = ColorSequence.new{
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(80, 0, 0)),
+		ColorSequenceKeypoint.new(0.34, Color3.fromRGB(255, 0, 0)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 180, 180)),
+		ColorSequenceKeypoint.new(0.66, Color3.fromRGB(255, 0, 0)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(80, 0, 0))
+	}
+	flow.Transparency = NumberSequence.new{
+		NumberSequenceKeypoint.new(0, 0.22),
+		NumberSequenceKeypoint.new(0.45, 0),
+		NumberSequenceKeypoint.new(0.55, 0),
+		NumberSequenceKeypoint.new(1, 0.22)
+	}
+	flow.Rotation = math.random(0, 359)
+	flow.Parent = stroke
+	table.insert(FlowBorders, { Gradient = flow, Speed = math.random(45, 95) })
+
 	return stroke
 end
+
+RunService.RenderStepped:Connect(function(dt)
+	for i = #FlowBorders, 1, -1 do
+		local item = FlowBorders[i]
+		if item.Gradient and item.Gradient.Parent then
+			item.Gradient.Rotation = (item.Gradient.Rotation + dt * item.Speed) % 360
+			item.Gradient.Offset = Vector2.new(math.sin(os.clock() * 1.6 + i) * 0.18, 0)
+		else
+			table.remove(FlowBorders, i)
+		end
+	end
+end)
 
 -- ======= Settings (unchanged behavior) =======
 local Settings = {
@@ -129,6 +162,134 @@ screenGui.Parent = PlayerGui
 
 local uiScale = Instance.new("UIScale")
 uiScale.Parent = screenGui
+
+-- ======= Live dashboard stat helpers =======
+local RuntimeStats = {
+	FPS = "--",
+	Ping = "N/A",
+	Tools = "0",
+	Scripts = "0"
+}
+
+local StatLabels = {}
+local AvatarImages = {}
+local PlayerThumbnail = ""
+local ScriptRunCount = 0
+local RuntimeStatsStarted = false
+
+local function bindStatLabel(key, label)
+	StatLabels[key] = StatLabels[key] or {}
+	table.insert(StatLabels[key], label)
+	label.Text = tostring(RuntimeStats[key] or "--")
+end
+
+local function setRuntimeStat(key, value)
+	RuntimeStats[key] = tostring(value)
+	if StatLabels[key] then
+		for i = #StatLabels[key], 1, -1 do
+			local label = StatLabels[key][i]
+			if label and label.Parent then
+				label.Text = tostring(RuntimeStats[key])
+			else
+				table.remove(StatLabels[key], i)
+			end
+		end
+	end
+end
+
+local function bindAvatarImage(imageLabel)
+	table.insert(AvatarImages, imageLabel)
+	if PlayerThumbnail ~= "" then
+		imageLabel.Image = PlayerThumbnail
+	end
+end
+
+task.spawn(function()
+	local ok, image = pcall(function()
+		return Players:GetUserThumbnailAsync(LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
+	end)
+	if ok and image then
+		PlayerThumbnail = image
+		for i = #AvatarImages, 1, -1 do
+			local imageLabel = AvatarImages[i]
+			if imageLabel and imageLabel.Parent then
+				imageLabel.Image = PlayerThumbnail
+			else
+				table.remove(AvatarImages, i)
+			end
+		end
+	end
+end)
+
+local function countToolsIn(container)
+	local count = 0
+	if not container then return count end
+	for _, item in ipairs(container:GetChildren()) do
+		if item:IsA("Tool") then
+			count += 1
+		end
+	end
+	return count
+end
+
+local function countPlayerTools()
+	return countToolsIn(LocalPlayer:FindFirstChildOfClass("Backpack")) + countToolsIn(LocalPlayer.Character)
+end
+
+local function readPingText()
+	local ok, ping = pcall(function()
+		return LocalPlayer:GetNetworkPing()
+	end)
+	if ok and type(ping) == "number" then
+		return tostring(math.max(0, math.floor((ping * 1000) + 0.5))) .. " ms"
+	end
+
+	local okStats, value = pcall(function()
+		local network = Stats:FindFirstChild("Network")
+		local serverStats = network and network:FindFirstChild("ServerStatsItem")
+		local dataPing = serverStats and serverStats:FindFirstChild("Data Ping")
+		if dataPing then
+			return dataPing:GetValueString()
+		end
+	end)
+
+	if okStats and value and tostring(value) ~= "" then
+		return tostring(value)
+	end
+
+	return "N/A"
+end
+
+local function recordScriptExecution()
+	ScriptRunCount += 1
+	setRuntimeStat("Scripts", ScriptRunCount)
+end
+
+local function startRuntimeStats()
+	if RuntimeStatsStarted then return end
+	RuntimeStatsStarted = true
+
+	local frames = 0
+	local elapsed = 0
+
+	RunService.RenderStepped:Connect(function(dt)
+		frames += 1
+		elapsed += dt
+		if elapsed >= 0.5 then
+			setRuntimeStat("FPS", math.floor((frames / elapsed) + 0.5))
+			frames = 0
+			elapsed = 0
+		end
+	end)
+
+	task.spawn(function()
+		while screenGui.Parent do
+			setRuntimeStat("Ping", readPingText())
+			setRuntimeStat("Tools", countPlayerTools())
+			task.wait(0.75)
+		end
+	end)
+end
 
 ---------------------------------------------------------------------
 -- 🌋 BACKGROUND FX SYSTEM
@@ -320,19 +481,6 @@ addRound(main, DEFAULT_THEME.Radius)
 -- border stroke
 local stroke = addStroke(main, Color3.fromRGB(255,0,0), 1)
 
-local grad = Instance.new("UIGradient")
-grad.Color = ColorSequence.new{
-	ColorSequenceKeypoint.new(0, Color3.fromRGB(255,0,0)),
-	ColorSequenceKeypoint.new(0.5, Color3.fromRGB(155,0,0)),
-	ColorSequenceKeypoint.new(1, Color3.fromRGB(55,0,0))
-}
-grad.Parent = stroke
-
--- animate rotation
-RunService.RenderStepped:Connect(function(dt)
-	grad.Rotation += dt * 60
-end)
-
 for i = 1,3 do
 	local glow = Instance.new("UIStroke")
 	glow.Thickness = 2 + (i * 2)
@@ -502,6 +650,144 @@ pageArea.Position = UDim2.new(0, 0, 0, 40)
 pageArea.BackgroundTransparency = 1
 pageArea.ClipsDescendants = true
 pageArea.Parent = content
+
+-- ======= Compact stats bar shown while the hub is closed =======
+local topStatsBar = Instance.new("Frame")
+topStatsBar.Name = "ClosedStatsBar"
+topStatsBar.Size = UDim2.new(1, -24, 0, 44)
+topStatsBar.Position = UDim2.new(0.5, 0, 0, 8)
+topStatsBar.AnchorPoint = Vector2.new(0.5, 0)
+topStatsBar.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+topStatsBar.BackgroundTransparency = 0.05
+topStatsBar.BorderSizePixel = 0
+topStatsBar.ZIndex = 50
+topStatsBar.Parent = screenGui
+addRound(topStatsBar, UDim.new(0, 10))
+addStroke(topStatsBar, DEFAULT_THEME.Accent, 1)
+
+local topStatsLimit = Instance.new("UISizeConstraint")
+topStatsLimit.MaxSize = Vector2.new(820, 44)
+topStatsLimit.Parent = topStatsBar
+
+local topAvatar = Instance.new("ImageLabel")
+topAvatar.Name = "Avatar"
+topAvatar.Size = UDim2.new(0, 32, 0, 32)
+topAvatar.Position = UDim2.new(0, 10, 0, 6)
+topAvatar.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+topAvatar.BorderSizePixel = 0
+topAvatar.ZIndex = 51
+topAvatar.Parent = topStatsBar
+addRound(topAvatar, UDim.new(0, 8))
+addStroke(topAvatar, DEFAULT_THEME.Accent, 1, 0.2)
+bindAvatarImage(topAvatar)
+
+local topName = Instance.new("TextLabel")
+topName.Name = "PlayerName"
+topName.Size = UDim2.new(0, 190, 0, 18)
+topName.Position = UDim2.new(0, 50, 0, 4)
+topName.BackgroundTransparency = 1
+topName.Font = Enum.Font.Code
+topName.TextSize = 13
+topName.TextColor3 = DEFAULT_THEME.Text
+topName.TextXAlignment = Enum.TextXAlignment.Left
+topName.Text = LocalPlayer.DisplayName
+topName.ZIndex = 51
+topName.Parent = topStatsBar
+
+local topUser = Instance.new("TextLabel")
+topUser.Name = "PlayerUser"
+topUser.Size = UDim2.new(0, 190, 0, 18)
+topUser.Position = UDim2.new(0, 50, 0, 22)
+topUser.BackgroundTransparency = 1
+topUser.Font = Enum.Font.Code
+topUser.TextSize = 11
+topUser.TextColor3 = DEFAULT_THEME.Muted
+topUser.TextXAlignment = Enum.TextXAlignment.Left
+topUser.Text = "@" .. LocalPlayer.Name .. " | ID " .. tostring(LocalPlayer.UserId)
+topUser.ZIndex = 51
+topUser.Parent = topStatsBar
+
+local topStatHolder = Instance.new("Frame")
+topStatHolder.Name = "Stats"
+topStatHolder.Size = UDim2.new(1, -252, 1, -10)
+topStatHolder.Position = UDim2.new(0, 244, 0, 5)
+topStatHolder.BackgroundTransparency = 1
+topStatHolder.ZIndex = 51
+topStatHolder.Parent = topStatsBar
+
+local topStatLayout = Instance.new("UIListLayout")
+topStatLayout.FillDirection = Enum.FillDirection.Horizontal
+topStatLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+topStatLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+topStatLayout.Padding = UDim.new(0, 6)
+topStatLayout.SortOrder = Enum.SortOrder.LayoutOrder
+topStatLayout.Parent = topStatHolder
+
+local function createTopStat(labelText, key, order, width)
+	local stat = Instance.new("Frame")
+	stat.Name = key .. "TopStat"
+	stat.Size = UDim2.new(0, width or 92, 1, 0)
+	stat.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+	stat.BackgroundTransparency = 0.1
+	stat.BorderSizePixel = 0
+	stat.LayoutOrder = order
+	stat.ZIndex = 51
+	stat.Parent = topStatHolder
+	addRound(stat, UDim.new(0, 8))
+	addStroke(stat, DEFAULT_THEME.Accent, 1, 0.35)
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, -8, 0, 13)
+	label.Position = UDim2.new(0, 4, 0, 3)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.Code
+	label.TextSize = 10
+	label.TextColor3 = DEFAULT_THEME.Muted
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Text = labelText
+	label.ZIndex = 52
+	label.Parent = stat
+
+	local value = Instance.new("TextLabel")
+	value.Size = UDim2.new(1, -8, 0, 16)
+	value.Position = UDim2.new(0, 4, 0, 16)
+	value.BackgroundTransparency = 1
+	value.Font = Enum.Font.Code
+	value.TextSize = 13
+	value.TextColor3 = DEFAULT_THEME.Text
+	value.TextXAlignment = Enum.TextXAlignment.Right
+	value.ZIndex = 52
+	value.Parent = stat
+	bindStatLabel(key, value)
+
+	return stat
+end
+
+createTopStat("FPS", "FPS", 1, 76)
+createTopStat("PING", "Ping", 2, 92)
+createTopStat("TOOLS", "Tools", 3, 78)
+createTopStat("SCRIPTS", "Scripts", 4, 92)
+
+local function setTopStatsBarVisible(visible)
+	if visible then
+		topStatsBar.Visible = true
+		tw(topStatsBar, {
+			Position = UDim2.new(0.5, 0, 0, 8),
+			BackgroundTransparency = 0.05
+		}, 0.18):Play()
+	else
+		local hideTween = tw(topStatsBar, {
+			Position = UDim2.new(0.5, 0, 0, -60),
+			BackgroundTransparency = 1
+		}, 0.18)
+		hideTween:Play()
+		task.delay(0.2, function()
+			if topStatsBar.Position.Y.Offset <= -50 then
+				topStatsBar.Visible = false
+			end
+		end)
+	end
+end
 
 -- ======= Pages system (keeps original behaviour) =======
 local Pages, currentPageName = {}, nil
@@ -688,24 +974,138 @@ local function createToggle(labelText, initial)
 	return row, function() return state end, setState
 end
 
--- ======= Action button helper =======
-local function createActionButton(textLabel, url)
+-- ======= Action card helper =======
+local SCRIPT_DESCRIPTIONS = {
+	["Get Base"] = "Loads the base utility script from the SPT library.",
+	["Respawn V4"] = "Runs the respawn utility script and refreshes the player setup.",
+	["Get Tools"] = "Attempts to collect or restore available tools for your character.",
+	["No Cooldown"] = "Runs the tool cooldown bypass script from the existing source.",
+	["Event Spam"] = "Runs the high-frequency event script configured for this hub entry.",
+	["Use Tools Normal"] = "Runs the standard tool-use helper from the SPT library.",
+	["Use 2 Tools"] = "Runs the dual-tool helper for using two tools together.",
+	["Kill Aura"] = "Runs the aura-style tool helper from the configured source.",
+	["Loop Tools"] = "Runs the looping tool automation helper.",
+	["Float/Grip"] = "Runs the grip and float utility script.",
+	["Target Aura"] = "Runs the targeted aura helper from the existing source.",
+	["Loopbring"] = "Runs the loopbring helper script.",
+	["Damage"] = "Runs the damage helper script from the SPT library.",
+	["Hit Amplifier"] = "Runs the hit amplifier helper.",
+	["Anti-Lag"] = "Runs the client cleanup and anti-lag helper.",
+	["PermaDeath"] = "Runs the permadeath utility script.",
+	["WalkingGodMode"] = "Runs the walking god mode utility script.",
+	["Infinite Yield"] = "Loads Infinite Yield from its configured source.",
+	["Axe Smash Spam"] = "Runs the axe smash spam helper.",
+	["Emote GUI"] = "Loads the emote GUI helper.",
+	["WIP"] = "This slot is reserved for a future script. No source is configured yet."
+}
+
+local function getScriptDescription(textLabel, url, descriptionText)
+	if type(descriptionText) == "string" and descriptionText ~= "" then
+		return descriptionText
+	end
+	if SCRIPT_DESCRIPTIONS[textLabel] then
+		return SCRIPT_DESCRIPTIONS[textLabel]
+	end
+	if type(url) == "string" and url ~= "" then
+		return "Runs the existing " .. tostring(textLabel) .. " script from its configured source."
+	end
+	return "No source URL is configured for this script slot yet."
+end
+
+local function createActionButton(textLabel, url, descriptionText)
 	local row = Instance.new("Frame")
-	row.Size = UDim2.new(1, 0, 0, 48)
-	row.BackgroundTransparency = 1
+	row.Name = tostring(textLabel) .. "Card"
+	row.Size = UDim2.new(1, -4, 0, 148)
+	row.BackgroundColor3 = Color3.fromRGB(13, 13, 18)
+	row.BorderSizePixel = 0
+	addRound(row, UDim.new(0, 10))
+	addStroke(row, DEFAULT_THEME.Accent, 1)
+
+	local titleLabel = Instance.new("TextLabel")
+	titleLabel.Name = "ScriptName"
+	titleLabel.Size = UDim2.new(1, -190, 0, 28)
+	titleLabel.Position = UDim2.new(0, 14, 0, 10)
+	titleLabel.BackgroundTransparency = 1
+	titleLabel.Text = textLabel
+	titleLabel.Font = Enum.Font.Code
+	titleLabel.TextSize = 18
+	titleLabel.TextColor3 = DEFAULT_THEME.Text
+	titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+	titleLabel.TextYAlignment = Enum.TextYAlignment.Center
+	titleLabel.Parent = row
+
+	local descScroll = Instance.new("ScrollingFrame")
+	descScroll.Name = "Description"
+	descScroll.Size = UDim2.new(1, -190, 0, 82)
+	descScroll.Position = UDim2.new(0, 14, 0, 46)
+	descScroll.BackgroundColor3 = Color3.fromRGB(7, 7, 11)
+	descScroll.BackgroundTransparency = 0.05
+	descScroll.BorderSizePixel = 0
+	descScroll.ScrollBarThickness = 4
+	descScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+	descScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	descScroll.Parent = row
+	addRound(descScroll, UDim.new(0, 8))
+	addStroke(descScroll, DEFAULT_THEME.Accent, 1, 0.55)
+
+	local descPadding = Instance.new("UIPadding")
+	descPadding.PaddingTop = UDim.new(0, 8)
+	descPadding.PaddingBottom = UDim.new(0, 8)
+	descPadding.PaddingLeft = UDim.new(0, 8)
+	descPadding.PaddingRight = UDim.new(0, 8)
+	descPadding.Parent = descScroll
+
+	local descLabel = Instance.new("TextLabel")
+	descLabel.Name = "DescriptionText"
+	descLabel.Size = UDim2.new(1, -4, 0, 0)
+	descLabel.AutomaticSize = Enum.AutomaticSize.Y
+	descLabel.BackgroundTransparency = 1
+	descLabel.Text = getScriptDescription(textLabel, url, descriptionText)
+	descLabel.TextWrapped = true
+	descLabel.TextXAlignment = Enum.TextXAlignment.Left
+	descLabel.TextYAlignment = Enum.TextYAlignment.Top
+	descLabel.Font = Enum.Font.Code
+	descLabel.TextSize = 13
+	descLabel.TextColor3 = DEFAULT_THEME.Muted
+	descLabel.Parent = descScroll
 
 	local actBtn = Instance.new("TextButton")
-	actBtn.Size = UDim2.new(0, 160, 1, 0)
-	actBtn.Position = UDim2.new(0, 0, 0, 0)
+	actBtn.Name = "Execute"
+	actBtn.Size = UDim2.new(0, 150, 0, 42)
+	actBtn.Position = UDim2.new(1, -164, 1, -56)
 	actBtn.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-	actBtn.TextColor3 = Color3.new(255,0,0)
-	actBtn.Text = textLabel
+	actBtn.AutoButtonColor = false
+	actBtn.Text = "Execute"
 	actBtn.Font = Enum.Font.Code
-	actBtn.TextSize = 18
+	actBtn.TextSize = 17
 	actBtn.TextColor3 = DEFAULT_THEME.Text
 	actBtn.Parent = row
 	addRound(actBtn, UDim.new(0, 10))
 	addStroke(actBtn, DEFAULT_THEME.Accent, 1)
+
+	local statusLabel = Instance.new("TextLabel")
+	statusLabel.Name = "Status"
+	statusLabel.Size = UDim2.new(0, 150, 0, 22)
+	statusLabel.Position = UDim2.new(1, -164, 0, 46)
+	statusLabel.BackgroundTransparency = 1
+	statusLabel.Font = Enum.Font.Code
+	statusLabel.TextSize = 12
+	statusLabel.TextColor3 = DEFAULT_THEME.Muted
+	statusLabel.TextXAlignment = Enum.TextXAlignment.Center
+	statusLabel.Text = "Ready"
+	statusLabel.Parent = row
+
+	actBtn.MouseEnter:Connect(function()
+		if actBtn.Text == "Execute" then
+			tw(actBtn, {BackgroundColor3 = Color3.fromRGB(45, 0, 0)}, 0.12):Play()
+		end
+	end)
+
+	actBtn.MouseLeave:Connect(function()
+		if actBtn.Text == "Execute" then
+			tw(actBtn, {BackgroundColor3 = Color3.fromRGB(0, 0, 0)}, 0.12):Play()
+		end
+	end)
 
 	local running = false
 	actBtn.MouseButton1Click:Connect(function()
@@ -713,33 +1113,41 @@ local function createActionButton(textLabel, url)
 		running = true
 		local oldText = actBtn.Text
 		actBtn.Text = "Running..."
+		statusLabel.Text = "Fetching source"
 		actBtn.BackgroundColor3 = Color3.fromRGB(120,120,120)
+		tw(actBtn, {Size = UDim2.new(0, 156, 0, 42)}, 0.12):Play()
 		task.spawn(function()
 			local ok, res = pcall(function()
-				if type(url) ~= "string" then error("Invalid URL") end
-				local content
+				if type(url) ~= "string" or url == "" then error("Invalid URL") end
+				local remoteSource
 				local ok2, err2 = pcall(function()
-					content = game:HttpGet(url, true)
+					remoteSource = game:HttpGet(url, true)
 				end)
 				if not ok2 then error("HttpGet failed: "..tostring(err2)) end
-				local f, err = loadstring(content)
+				statusLabel.Text = "Executing"
+				local f, err = loadstring(remoteSource)
 				if not f then error("loadstring failed: "..tostring(err)) end
 				local ran, rerr = pcall(function() f() end)
 				if not ran then error("remote script error: "..tostring(rerr)) end
 				return true
 			end)
 			if ok then
+				recordScriptExecution()
 				actBtn.Text = "Done"
-				tw(actBtn, {Size = UDim2.new(0, 160, 1, 0)}, 0.12):Play()
+				statusLabel.Text = "Executed"
+				tw(actBtn, {Size = UDim2.new(0, 150, 0, 42), BackgroundColor3 = Color3.fromRGB(20, 90, 35)}, 0.12):Play()
 				wait(0.8)
 				actBtn.Text = oldText
+				statusLabel.Text = "Ready"
 				actBtn.BackgroundColor3 = Color3.fromRGB(0,0,0)
 			else
 				warn("[RTXHub] Action failed:", res)
 				actBtn.Text = "Error"
-				actBtn.BackgroundColor3 = Color3.fromRGB(160,50,50)
+				statusLabel.Text = "Check console"
+				tw(actBtn, {Size = UDim2.new(0, 150, 0, 42), BackgroundColor3 = Color3.fromRGB(160,50,50)}, 0.12):Play()
 				wait(1.2)
 				actBtn.Text = oldText
+				statusLabel.Text = "Ready"
 				actBtn.BackgroundColor3 = Color3.fromRGB(0,0,0)
 			end
 			running = false
@@ -750,8 +1158,132 @@ end
 
 -- ======= Pages & content (kept from original) =======
 local pageWelcome = createPage("Welcome")
+
+local dashboard = Instance.new("Frame")
+dashboard.Name = "Dashboard"
+dashboard.Size = UDim2.new(1, -12, 0, 156)
+dashboard.BackgroundColor3 = Color3.fromRGB(13, 13, 18)
+dashboard.BorderSizePixel = 0
+dashboard.LayoutOrder = 1
+dashboard.Parent = pageWelcome
+addRound(dashboard, UDim.new(0, 10))
+addStroke(dashboard, DEFAULT_THEME.Accent, 1)
+
+local dashboardTitle = Instance.new("TextLabel")
+dashboardTitle.Name = "DashboardTitle"
+dashboardTitle.Size = UDim2.new(1, -24, 0, 22)
+dashboardTitle.Position = UDim2.new(0, 14, 0, 10)
+dashboardTitle.BackgroundTransparency = 1
+dashboardTitle.Font = Enum.Font.Code
+dashboardTitle.TextSize = 17
+dashboardTitle.TextColor3 = DEFAULT_THEME.Text
+dashboardTitle.TextXAlignment = Enum.TextXAlignment.Left
+dashboardTitle.Text = "Player Dashboard"
+dashboardTitle.Parent = dashboard
+
+local dashboardAvatar = Instance.new("ImageLabel")
+dashboardAvatar.Name = "Avatar"
+dashboardAvatar.Size = UDim2.new(0, 84, 0, 84)
+dashboardAvatar.Position = UDim2.new(0, 16, 0, 48)
+dashboardAvatar.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+dashboardAvatar.BorderSizePixel = 0
+dashboardAvatar.Parent = dashboard
+addRound(dashboardAvatar, UDim.new(0, 12))
+addStroke(dashboardAvatar, DEFAULT_THEME.Accent, 1)
+bindAvatarImage(dashboardAvatar)
+
+local dashboardDisplay = Instance.new("TextLabel")
+dashboardDisplay.Name = "DisplayName"
+dashboardDisplay.Size = UDim2.new(0, 180, 0, 24)
+dashboardDisplay.Position = UDim2.new(0, 114, 0, 50)
+dashboardDisplay.BackgroundTransparency = 1
+dashboardDisplay.Font = Enum.Font.Code
+dashboardDisplay.TextSize = 18
+dashboardDisplay.TextColor3 = DEFAULT_THEME.Text
+dashboardDisplay.TextXAlignment = Enum.TextXAlignment.Left
+dashboardDisplay.Text = LocalPlayer.DisplayName
+dashboardDisplay.Parent = dashboard
+
+local dashboardUser = Instance.new("TextLabel")
+dashboardUser.Name = "Username"
+dashboardUser.Size = UDim2.new(0, 180, 0, 20)
+dashboardUser.Position = UDim2.new(0, 114, 0, 78)
+dashboardUser.BackgroundTransparency = 1
+dashboardUser.Font = Enum.Font.Code
+dashboardUser.TextSize = 13
+dashboardUser.TextColor3 = DEFAULT_THEME.Muted
+dashboardUser.TextXAlignment = Enum.TextXAlignment.Left
+dashboardUser.Text = "@" .. LocalPlayer.Name
+dashboardUser.Parent = dashboard
+
+local dashboardId = Instance.new("TextLabel")
+dashboardId.Name = "UserId"
+dashboardId.Size = UDim2.new(0, 180, 0, 20)
+dashboardId.Position = UDim2.new(0, 114, 0, 102)
+dashboardId.BackgroundTransparency = 1
+dashboardId.Font = Enum.Font.Code
+dashboardId.TextSize = 13
+dashboardId.TextColor3 = DEFAULT_THEME.Muted
+dashboardId.TextXAlignment = Enum.TextXAlignment.Left
+dashboardId.Text = "UserId: " .. tostring(LocalPlayer.UserId)
+dashboardId.Parent = dashboard
+
+local dashboardStats = Instance.new("Frame")
+dashboardStats.Name = "Stats"
+dashboardStats.Size = UDim2.new(1, -314, 1, -46)
+dashboardStats.Position = UDim2.new(0, 300, 0, 38)
+dashboardStats.BackgroundTransparency = 1
+dashboardStats.Parent = dashboard
+
+local dashboardGrid = Instance.new("UIGridLayout")
+dashboardGrid.CellPadding = UDim2.new(0, 8, 0, 8)
+dashboardGrid.CellSize = UDim2.new(0.5, -4, 0, 48)
+dashboardGrid.SortOrder = Enum.SortOrder.LayoutOrder
+dashboardGrid.Parent = dashboardStats
+
+local function createDashboardStat(labelText, key, order)
+	local tile = Instance.new("Frame")
+	tile.Name = key .. "Stat"
+	tile.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+	tile.BackgroundTransparency = 0.08
+	tile.BorderSizePixel = 0
+	tile.LayoutOrder = order
+	tile.Parent = dashboardStats
+	addRound(tile, UDim.new(0, 8))
+	addStroke(tile, DEFAULT_THEME.Accent, 1, 0.35)
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, -16, 0, 16)
+	label.Position = UDim2.new(0, 8, 0, 5)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.Code
+	label.TextSize = 11
+	label.TextColor3 = DEFAULT_THEME.Muted
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Text = labelText
+	label.Parent = tile
+
+	local value = Instance.new("TextLabel")
+	value.Size = UDim2.new(1, -16, 0, 21)
+	value.Position = UDim2.new(0, 8, 0, 22)
+	value.BackgroundTransparency = 1
+	value.Font = Enum.Font.Code
+	value.TextSize = 18
+	value.TextColor3 = DEFAULT_THEME.Text
+	value.TextXAlignment = Enum.TextXAlignment.Right
+	value.Parent = tile
+	bindStatLabel(key, value)
+end
+
+createDashboardStat("FPS", "FPS", 1)
+createDashboardStat("Ping", "Ping", 2)
+createDashboardStat("Tools", "Tools", 3)
+createDashboardStat("Scripts Executed", "Scripts", 4)
+startRuntimeStats()
+
 local welcomeText = Instance.new("TextLabel")
 welcomeText.Size = UDim2.new(1, -24, 0, 120)
+welcomeText.LayoutOrder = 2
 welcomeText.BackgroundTransparency = 1
 welcomeText.TextWrapped = true
 welcomeText.TextXAlignment = Enum.TextXAlignment.Left
@@ -1095,6 +1627,8 @@ _G.RtxHub = HubAPI
 -- Hub Animation
 local function hubOpenAnim()
 
+	setTopStatsBarVisible(false)
+
 	fxHolder.Visible = true
 
 	blur.Enabled = true
@@ -1140,6 +1674,7 @@ local function hubCloseAnim()
 
 	task.delay(0.28, function()
 		main.Visible = false
+		setTopStatsBarVisible(true)
 	end)
 end
 

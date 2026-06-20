@@ -20,12 +20,12 @@ local RANGE_SQ = RANGE * RANGE
 
 -- adaptive burst
 local TOUCHES_PER_PART = 3
-local REMOTES_PER_TOOL = 3
+local REMOTES_PER_TOOL = 1
 
 -- update rates
-local TARGET_REFRESH = 0.12
+local TARGET_REFRESH = 0.03
 local IDLE_INTERVAL = 0.08
-local ACTIVE_INTERVAL = 0.01
+local ACTIVE_INTERVAL = 0.05
 
 --------------------------------------------------
 -- INTERNALS
@@ -50,8 +50,6 @@ local activeState = false
 
 local PRIORITY_PARTS = {
 	"HumanoidRootPart",
-	"Torso",
-	"UpperTorso",
 }
 
 --------------------------------------------------
@@ -349,7 +347,7 @@ end
 -- MAIN ENGINE
 --------------------------------------------------
 
-RunService.PreSimulation:Connect(function()
+RunService.Heartbeat:Connect(function()
 
 	updateTarget()
 

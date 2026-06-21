@@ -1,33 +1,123 @@
 -- ⚡ No Cooldown V6(7) (Cooldown Breaker + Combat Loop)
+
+local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+
+local LocalPlayer = Players.LocalPlayer
 
 --================================================
 -- ⚡ GLOBAL COOLDOWN BREAKER (Original Power)
 --================================================
 
-hookfunction(wait, function()
-	return RunService.PostSimulation:Wait()
-end)
+-- Use 'Stepped' for efficient timing
+local stepped = RunService.Stepped
 
-hookfunction(task.wait, function()
-	return RunService.PostSimulation:Wait()
-end)
-
-hookfunction(delay, function(_,func)
-	task.spawn(func)
-end)
-
-hookfunction(spawn, function(func)
-	task.spawn(func)
-end)
-
--- Use Stepped for timing
-local Stepped = RunService.Stepped
-
--- Override wait()
-hookfunction(wait, function()
-    Stepped:Wait()
+-- Function to override 'wait'
+local hookWait
+hookWait = hookfunction(wait, function()
+    stepped:Wait()
     return nil
 end)
 
-print("⚡ No Cooldown Running")
+--================================================
+-- CHARACTER + TOOL TRACKING
+--================================================
+
+local Character
+local FightEvent
+
+local function setupTool(tool)
+
+	local remote = tool:FindFirstChild("FightEvent")
+
+	if remote then
+		FightEvent = remote
+	end
+
+end
+
+local function hookCharacter(char)
+
+	Character = char
+	FightEvent = nil
+
+	for _,v in ipairs(char:GetChildren()) do
+		if v:IsA("Tool") then
+			setupTool(v)
+		end
+	end
+
+	char.ChildAdded:Connect(function(child)
+		if child:IsA("Tool") then
+			setupTool(child)
+		end
+	end)
+
+end
+
+if LocalPlayer.Character then
+	hookCharacter(LocalPlayer.Character)
+end
+
+LocalPlayer.CharacterAdded:Connect(hookCharacter)
+
+--================================================
+-- ⚡ ULTRA COMBAT LOOP (OPTIMIZED)
+--================================================
+
+local RANGE = 20
+local RANGE_SQ = RANGE * RANGE
+
+local enemyCache = {}
+local lastScan = 0
+local SCAN_RATE = 0.35
+
+local function updateEnemyCache()
+
+	table.clear(enemyCache)
+
+	for _,player in ipairs(Players:GetPlayers()) do
+		if player ~= LocalPlayer then
+			table.insert(enemyCache, player)
+		end
+	end
+
+end
+
+RunService.Heartbeat:Connect(function()
+
+	if not Character then return end
+	if not FightEvent then return end
+
+	local hrp = Character:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+
+	-- update player cache occasionally
+	if tick() - lastScan > SCAN_RATE then
+		lastScan = tick()
+		updateEnemyCache()
+	end
+
+	local myPos = hrp.Position
+
+	for i = 1, #enemyCache do
+
+		local player = enemyCache[i]
+		local char = player.Character
+		if not char then continue end
+
+		local enemyHRP = char:FindFirstChild("HumanoidRootPart")
+		if not enemyHRP then continue end
+
+		local diff = myPos - enemyHRP.Position
+
+		-- squared distance check (WAY faster)
+		if diff:Dot(diff) <= RANGE_SQ then
+			FightEvent:FireServer(enemyHRP)
+		end
+
+	end
+
+end)
+
+print("⚡ No Cooldown V6(7) Running")

@@ -1,234 +1,453 @@
+-- RTX Axe Smash V1
+-- Modern RTX Hub UI Foundation
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local CoreGui = game:GetService("CoreGui")
 
-local localPlayer = Players.LocalPlayer
-local mouse = localPlayer:GetMouse()
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
 
--- EDIT THESE to match your tool/remote names (case sensitive)
-local toolName = "Axe Smash"        -- Name of the tool in Backpack/Character
-local remoteName = "Remote"         -- Name of the RemoteEvent/RemoteFunction inside the tool
+--------------------------------------------------
+-- CONFIG
+--------------------------------------------------
 
--- Defaults
-local spamRate = 0.06               -- seconds between fires (0.06 ≈ ~16.6 fires/sec). Increase to slow down.
-local isSpamming = false
-local spamThread = nil
+local TOOL_NAME = "Axe Smash"
+local REMOTE_NAME = "Remote"
 
--- Utility: find tool in Character or Backpack
-local function findTool()
-    local char = localPlayer.Character
-    if char then
-        local t = char:FindFirstChild(toolName)
-        if t and t:IsA("Tool") then return t end
-    end
-    local pack = localPlayer:FindFirstChildOfClass("Backpack")
-    if pack then
-        local t = pack:FindFirstChild(toolName)
-        if t and t:IsA("Tool") then return t end
-    end
-    return nil
+local CONFIG = {
+	Enabled = false,
+	APS = 80,
+	ToggleKey = Enum.KeyCode.X
+}
+
+local PRESETS = {
+	{ Name = "SAFE", APS = 35 },
+	{ Name = "FAST", APS = 80 },
+	{ Name = "MAX", APS = 150 }
+}
+
+local CurrentPreset = 2
+
+--------------------------------------------------
+-- THEME
+--------------------------------------------------
+
+local THEME = {
+	Accent = Color3.fromRGB(255,0,0),
+	Panel = Color3.fromRGB(18,18,24),
+	Background = Color3.fromRGB(8,8,12),
+	Button = Color3.fromRGB(0,0,0),
+	Text = Color3.fromRGB(255,0,0),
+	Muted = Color3.fromRGB(170,170,180),
+	On = Color3.fromRGB(35,0,0)
+}
+
+local TWEEN_FAST =
+	TweenInfo.new(
+		0.16,
+		Enum.EasingStyle.Quad,
+		Enum.EasingDirection.Out
+	)
+
+--------------------------------------------------
+-- CLEANUP
+--------------------------------------------------
+
+if _G.__RTXAxeCleanup then
+	pcall(_G.__RTXAxeCleanup)
 end
 
--- Utility: find remote inside tool
-local function findRemote(tool)
-    if not tool then return nil end
-    local r = tool:FindFirstChild(remoteName) or tool:FindFirstChildWhichIsA("RemoteEvent") or tool:FindFirstChildWhichIsA("RemoteFunction")
-    if r and (r:IsA("RemoteEvent") or r:IsA("RemoteFunction")) then
-        return r
-    end
-    return nil
+local Alive = true
+local Connections = {}
+local Gui
+
+local function Track(c)
+	table.insert(Connections,c)
+	return c
 end
 
--- Robust fire function: try to call appropriate remote type & expected args
-local function fireRemote(remote)
-    if not remote then return end
+local function Cleanup()
+	Alive = false
 
-    -- Try to guess what the remote expects:
-    -- Common patterns: FireServer(Vector3 position), FireServer(mouse.Hit, position, normal), FireServer(target, position), FireServer() etc.
-    -- We'll pass the most common: mouse.Hit (CFrame) and mouse.Hit.p (Vector3) where available.
-    local hit = nil
-    if mouse and mouse.Hit then
-        hit = mouse.Hit  -- this is a CFrame
-    end
+	for _,c in ipairs(Connections) do
+		if c and c.Connected then
+			c:Disconnect()
+		end
+	end
 
-    local ok, err = pcall(function()
-        if remote:IsA("RemoteEvent") then
-            -- try FireServer with CFrame first, then Vector3, then no args
-            if hit then
-                remote:FireServer(hit)                     -- try sending CFrame
-            else
-                remote:FireServer()                        -- fallback
-            end
-        elseif remote:IsA("RemoteFunction") then
-            if hit then
-                remote:InvokeServer(hit)
-            else
-                remote:InvokeServer()
-            end
-        end
-    end)
-    if not ok then
-        -- If first pattern failed, attempt alternate patterns (Vector3)
-        pcall(function()
-            if remote:IsA("RemoteEvent") then
-                if hit then remote:FireServer(hit.Position) end
-            elseif remote:IsA("RemoteFunction") then
-                if hit then remote:InvokeServer(hit.Position) end
-            end
-        end)
-    end
+	table.clear(Connections)
+
+	if Gui then
+		pcall(function()
+			Gui:Destroy()
+		end)
+	end
 end
 
--- Spam loop
-local function startSpamming(remote)
-    if isSpamming then return end
-    isSpamming = true
+_G.__RTXAxeCleanup = Cleanup
 
-    spamThread = coroutine.create(function()
-        while isSpamming and remote and remote.Parent do
-            -- ensure mouse position is up-to-date (LocalPlayer:GetMouse() updates automatically)
-            fireRemote(remote)
-            task.wait(spamRate)
-        end
-        isSpamming = false
-    end)
-    coroutine.resume(spamThread)
+--------------------------------------------------
+-- HELPERS
+--------------------------------------------------
+
+local function Round(obj,r)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0,r or 8)
+	c.Parent = obj
 end
 
-local function stopSpamming()
-    isSpamming = false
-    spamThread = nil
+local function Stroke(obj,t,a)
+	local s = Instance.new("UIStroke")
+	s.Color = THEME.Accent
+	s.Thickness = t or 1
+	s.Transparency = a or 0
+	s.Parent = obj
+	return s
 end
 
--- Simple UI (toggle + rate controls)
-local function buildUI()
-    local playerGui = localPlayer:WaitForChild("PlayerGui")
-    if playerGui:FindFirstChild("RemoteSpamGUI") then
-        playerGui.RemoteSpamGUI:Destroy()
-    end
+local function FindTool()
+	local char = LocalPlayer.Character
 
-    local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "RemoteSpamGUI"
-    screenGui.IgnoreGuiInset = true
-    screenGui.ResetOnSpawn = false
-    screenGui.Parent = playerGui
+	if char then
+		local t = char:FindFirstChild(TOOL_NAME)
+		if t then return t end
+	end
 
-    local frame = Instance.new("Frame")
-    frame.BackgroundTransparency = 0.35
-    frame.BackgroundColor3 = Color3.fromRGB(20,20,20)
-    frame.Size = UDim2.new(0, 220, 0, 110)
-    frame.Position = UDim2.new(0, 10, 0, 120)
-    frame.AnchorPoint = Vector2.new(0,0)
-    frame.Parent = screenGui
-    frame.BorderSizePixel = 0
-    frame.ClipsDescendants = true
+	local bp = LocalPlayer:FindFirstChildOfClass("Backpack")
 
-    local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, -12, 0, 26)
-    title.Position = UDim2.new(0, 6, 0, 6)
-    title.BackgroundTransparency = 1
-    title.Text = "Remote Spam"
-    title.Font = Enum.Font.GothamBold
-    title.TextSize = 14
-    title.TextColor3 = Color3.fromRGB(230,230,230)
-    title.TextXAlignment = Enum.TextXAlignment.Left
-    title.Parent = frame
+	if bp then
+		local t = bp:FindFirstChild(TOOL_NAME)
+		if t then return t end
+	end
 
-    local toggleBtn = Instance.new("TextButton")
-    toggleBtn.Size = UDim2.new(0, 80, 0, 30)
-    toggleBtn.Position = UDim2.new(0, 6, 0, 38)
-    toggleBtn.BackgroundColor3 = Color3.fromRGB(80,80,80)
-    toggleBtn.TextColor3 = Color3.fromRGB(230,230,230)
-    toggleBtn.Font = Enum.Font.GothamBold
-    toggleBtn.TextSize = 14
-    toggleBtn.Text = "OFF"
-    toggleBtn.Parent = frame
-
-    local rateLabel = Instance.new("TextLabel")
-    rateLabel.Size = UDim2.new(0, 120, 0, 20)
-    rateLabel.Position = UDim2.new(0, 6, 0, 76)
-    rateLabel.BackgroundTransparency = 1
-    rateLabel.Text = string.format("Rate: %.3fs", spamRate)
-    rateLabel.Font = Enum.Font.Gotham
-    rateLabel.TextSize = 12
-    rateLabel.TextColor3 = Color3.fromRGB(200,200,200)
-    rateLabel.TextXAlignment = Enum.TextXAlignment.Left
-    rateLabel.Parent = frame
-
-    local plus = Instance.new("TextButton")
-    plus.Size = UDim2.new(0, 24, 0, 24)
-    plus.Position = UDim2.new(1, -30, 0, 6)
-    plus.AnchorPoint = Vector2.new(1,0)
-    plus.Text = "+"
-    plus.Font = Enum.Font.Gotham
-    plus.TextSize = 18
-    plus.Parent = frame
-
-    local minus = Instance.new("TextButton")
-    minus.Size = UDim2.new(0, 24, 0, 24)
-    minus.Position = UDim2.new(1, -30, 0, 38)
-    minus.AnchorPoint = Vector2.new(1,0)
-    minus.Text = "–"
-    minus.Font = Enum.Font.Gotham
-    minus.TextSize = 18
-    minus.Parent = frame
-
-    -- interactions
-    toggleBtn.MouseButton1Click:Connect(function()
-        -- find current tool & remote each toggle so it uses latest tool state
-        local tool = findTool()
-        local remote = findRemote(tool)
-        if not remote then
-            -- try to search workspace tools if dropped
-            if tool == nil then
-                warn("RemoteSpam: Tool not found ("..tostring(toolName).."). Put tool in Backpack or equip it.")
-            else
-                warn("RemoteSpam: Remote not found inside tool; searched for '"..tostring(remoteName).."'.")
-            end
-            return
-        end
-
-        if not isSpamming then
-            toggleBtn.Text = "ON"
-            toggleBtn.BackgroundColor3 = Color3.fromRGB(60,150,60)
-            startSpamming(remote)
-        else
-            toggleBtn.Text = "OFF"
-            toggleBtn.BackgroundColor3 = Color3.fromRGB(80,80,80)
-            stopSpamming()
-        end
-    end)
-
-    plus.MouseButton1Click:Connect(function()
-        -- decrease interval (faster) but clamp minimally
-        spamRate = math.clamp(spamRate - 0.01, 0.01, 3)
-        rateLabel.Text = string.format("Rate: %.3fs", spamRate)
-    end)
-
-    minus.MouseButton1Click:Connect(function()
-        spamRate = math.clamp(spamRate + 0.02, 0.01, 3)
-        rateLabel.Text = string.format("Rate: %.3fs", spamRate)
-    end)
+	return nil
 end
 
--- Build UI
-buildUI()
+local function FindRemote()
+	local tool = FindTool()
 
--- Optional: Auto-prep when character spawns (helpful to ensure tool is present)
-local function onCharacterAdded(char)
-    -- small delay so Backpack/Tools load
-    task.wait(0.4)
-    local tool = findTool()
-    if tool then
-        -- tool found; nothing to do yet
-    end
+	if not tool then
+		return nil
+	end
+
+	return tool:FindFirstChild(REMOTE_NAME)
 end
 
-local function onPlayerAdded(plr)
-    if plr == localPlayer then
-        localPlayer.CharacterAdded:Connect(onCharacterAdded)
-        if localPlayer.Character then onCharacterAdded(localPlayer.Character) end
-    end
+--------------------------------------------------
+-- FIRING ENGINE
+--------------------------------------------------
+
+local Tokens = 0
+local FireCount = 0
+
+local function FireRemote()
+	local remote = FindRemote()
+
+	if not remote then
+		return
+	end
+
+	local hit = Mouse.Hit
+
+	pcall(function()
+		remote:FireServer(hit)
+	end)
+
+	FireCount += 1
 end
 
-onPlayerAdded(localPlayer)
+--------------------------------------------------
+-- GUI
+--------------------------------------------------
+
+local Old = CoreGui:FindFirstChild("RTXAxeSmash")
+
+if Old then
+	Old:Destroy()
+end
+
+Gui = Instance.new("ScreenGui")
+Gui.Name = "RTXAxeSmash"
+Gui.ResetOnSpawn = false
+Gui.Parent = CoreGui
+
+local Panel = Instance.new("Frame")
+Panel.Size = UDim2.fromOffset(260,150)
+Panel.Position = UDim2.fromScale(.98,.50)
+Panel.AnchorPoint = Vector2.new(1,.5)
+Panel.BackgroundColor3 = THEME.Panel
+Panel.BorderSizePixel = 0
+Panel.Active = true
+Panel.Draggable = true
+Panel.Parent = Gui
+
+Round(Panel,12)
+Stroke(Panel,1.5,0)
+
+local Glow = Instance.new("UIStroke")
+Glow.Color = THEME.Accent
+Glow.Thickness = 5
+Glow.Transparency = .7
+Glow.Parent = Panel
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1,-20,0,24)
+Title.Position = UDim2.new(0,10,0,8)
+Title.BackgroundTransparency = 1
+Title.Font = Enum.Font.Code
+Title.TextSize = 17
+Title.TextColor3 = THEME.Text
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Text = "RTX AXE SMASH"
+Title.Parent = Panel
+
+local Status = Instance.new("TextLabel")
+Status.Size = UDim2.new(1,-20,0,18)
+Status.Position = UDim2.new(0,10,0,30)
+Status.BackgroundTransparency = 1
+Status.Font = Enum.Font.Code
+Status.TextSize = 12
+Status.TextColor3 = THEME.Muted
+Status.TextXAlignment = Enum.TextXAlignment.Left
+Status.Parent = Panel
+
+local Toggle = Instance.new("TextButton")
+Toggle.Size = UDim2.new(1,-20,0,32)
+Toggle.Position = UDim2.new(0,10,0,52)
+Toggle.BackgroundColor3 = THEME.Button
+Toggle.TextColor3 = THEME.Text
+Toggle.Font = Enum.Font.Code
+Toggle.TextSize = 15
+Toggle.Parent = Panel
+
+Round(Toggle,9)
+Stroke(Toggle,1,.2)
+
+local Stats = Instance.new("Frame")
+Stats.Size = UDim2.new(1,-20,0,24)
+Stats.Position = UDim2.new(0,10,0,92)
+Stats.BackgroundTransparency = 1
+Stats.Parent = Panel
+
+local Layout = Instance.new("UIListLayout")
+Layout.FillDirection = Enum.FillDirection.Horizontal
+Layout.Padding = UDim.new(0,6)
+Layout.Parent = Stats
+
+local function MakeLabel(width)
+
+	local L = Instance.new("TextLabel")
+	L.Size = UDim2.new(0,width,1,0)
+	L.BackgroundColor3 = THEME.Background
+	L.TextColor3 = THEME.Muted
+	L.Font = Enum.Font.Code
+	L.TextSize = 11
+	L.Parent = Stats
+
+	Round(L,7)
+	Stroke(L,1,.5)
+
+	return L
+end
+
+local APSLabel = MakeLabel(70)
+local FiresLabel = MakeLabel(80)
+local ToolLabel = MakeLabel(84)
+
+local Controls = Instance.new("Frame")
+Controls.Size = UDim2.new(1,-20,0,24)
+Controls.Position = UDim2.new(0,10,0,122)
+Controls.BackgroundTransparency = 1
+Controls.Parent = Panel
+
+local CL = Instance.new("UIListLayout")
+CL.FillDirection = Enum.FillDirection.Horizontal
+CL.Padding = UDim.new(0,6)
+CL.Parent = Controls
+
+local function MakeButton(text,width)
+
+	local B = Instance.new("TextButton")
+	B.Size = UDim2.new(0,width,1,0)
+	B.BackgroundColor3 = THEME.Button
+	B.TextColor3 = THEME.Text
+	B.Font = Enum.Font.Code
+	B.TextSize = 12
+	B.Text = text
+	B.Parent = Controls
+
+	Round(B,7)
+	Stroke(B,1,.35)
+
+	return B
+end
+
+local Minus = MakeButton("- APS",70)
+local Plus = MakeButton("+ APS",70)
+local Mode = MakeButton("MODE",84)
+
+--------------------------------------------------
+-- UI UPDATE
+--------------------------------------------------
+
+local function UpdateUI()
+
+	local tool = FindTool()
+	local remote = FindRemote()
+
+	Toggle.Text =
+		CONFIG.Enabled and
+		"AXE SMASH: ON" or
+		"AXE SMASH: OFF"
+
+	Status.Text =
+		(tool and remote)
+		and "READY"
+		or "TOOL OR REMOTE MISSING"
+
+	APSLabel.Text =
+		"APS "..CONFIG.APS
+
+	FiresLabel.Text =
+		"Fires "..FireCount
+
+	ToolLabel.Text =
+		tool and "FOUND"
+		or "MISSING"
+
+	if CONFIG.Enabled then
+		TweenService:Create(
+			Toggle,
+			TWEEN_FAST,
+			{BackgroundColor3 = THEME.On}
+		):Play()
+
+		Glow.Transparency = .45
+	else
+		TweenService:Create(
+			Toggle,
+			TWEEN_FAST,
+			{BackgroundColor3 = THEME.Button}
+		):Play()
+
+		Glow.Transparency = .72
+	end
+
+	Mode.Text =
+		"MODE "..PRESETS[CurrentPreset].Name
+end
+
+--------------------------------------------------
+-- BUTTONS
+--------------------------------------------------
+
+Toggle.MouseButton1Click:Connect(function()
+
+	CONFIG.Enabled =
+		not CONFIG.Enabled
+
+	UpdateUI()
+
+end)
+
+Minus.MouseButton1Click:Connect(function()
+
+	CONFIG.APS =
+		math.max(
+			10,
+			CONFIG.APS - 10
+		)
+
+	UpdateUI()
+
+end)
+
+Plus.MouseButton1Click:Connect(function()
+
+	CONFIG.APS =
+		math.min(
+			300,
+			CONFIG.APS + 10
+		)
+
+	UpdateUI()
+
+end)
+
+Mode.MouseButton1Click:Connect(function()
+
+	CurrentPreset += 1
+
+	if CurrentPreset > #PRESETS then
+		CurrentPreset = 1
+	end
+
+	CONFIG.APS =
+		PRESETS[CurrentPreset].APS
+
+	UpdateUI()
+
+end)
+
+--------------------------------------------------
+-- KEYBIND
+--------------------------------------------------
+
+Track(
+	UserInputService.InputBegan:Connect(
+		function(input,gp)
+
+			if gp then
+				return
+			end
+
+			if input.KeyCode ==
+				CONFIG.ToggleKey
+			then
+
+				CONFIG.Enabled =
+					not CONFIG.Enabled
+
+				UpdateUI()
+
+			end
+		end
+	)
+)
+
+--------------------------------------------------
+-- MAIN LOOP
+--------------------------------------------------
+
+Track(
+	RunService.Heartbeat:Connect(
+		function(dt)
+
+			if not CONFIG.Enabled then
+				return
+			end
+
+			Tokens += dt * CONFIG.APS
+
+			local count = math.floor(Tokens)
+
+			if count <= 0 then
+				return
+			end
+
+			Tokens -= count
+
+			for i=1,count do
+				FireRemote()
+			end
+
+		end
+	)
+)
+
+UpdateUI()
+
+print("[RTX Axe Smash] Loaded")

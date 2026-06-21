@@ -21,4 +21,13 @@ hookfunction(spawn, function(func)
 	task.spawn(func)
 end)
 
+-- Use Stepped for timing
+local Stepped = RunService.Stepped
+
+-- Override wait()
+hookfunction(wait, function()
+    Stepped:Wait()
+    return nil
+end)
+
 print("⚡ No Cooldown Running")

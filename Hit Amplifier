@@ -1,78 +1,109 @@
 -- ==========================================================
--- ⚔️ ULTRA SMART HIT AMPLIFIER — MAX SPEED, NETWORK SAFE
+-- ⚔️ ULTRA SMART HIT AMPLIFIER V3 - HYPER / NETWORK SAFE
 -- ==========================================================
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
+
 local LocalPlayer = Players.LocalPlayer
 
-------------------------------------------------------------
--- CONFIG
-------------------------------------------------------------
-local TOGGLE_KEY = Enum.KeyCode.H
-local HIT_RANGE = Vector3.new(28, 28, 28)
-local SCAN_RATE = 1 / 90 -- high frequency
-local BURST_COUNT = 2     -- micro-burst per detection
-local ACTIVE = true
+if getgenv().SPT_Loaded and getgenv().SPT_Loaded["Hit Amplifier"] then
+	print("⚔️ Hit Amplifier already loaded.")
+	return
+end
+getgenv().SPT_Loaded = getgenv().SPT_Loaded or {}
+getgenv().SPT_Loaded["Hit Amplifier"] = true
 
-------------------------------------------------------------
--- UI
-------------------------------------------------------------
+-- ============ CONFIG ============
+getgenv().SPT_HitAmp = getgenv().SPT_HitAmp or {}
+local G = getgenv().SPT_HitAmp
+
+local HIT_RANGE    = Vector3.new(G.Range or 32, G.Range or 32, G.Range or 32)
+local SCAN_RATE    = 1 / 60
+local BURST_COUNT  = 3
+local ACTIVE       = true
+local TOGGLE_KEY   = Enum.KeyCode.H
+
+-- ============ UI ============
 local gui = Instance.new("ScreenGui")
+gui.Name = "HitAmpUI"
+gui.ResetOnSpawn = false
 gui.Parent = game:GetService("CoreGui")
 
 local label = Instance.new("TextLabel", gui)
-label.Size = UDim2.new(0, 260, 0, 36)
-label.Position = UDim2.new(0.5, -130, 0.12, 0)
-label.BackgroundColor3 = Color3.fromRGB(15,15,15)
+label.Size = UDim2.fromOffset(280, 34)
+label.Position = UDim2.new(0.5, -140, 0.16, 0)
+label.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 label.BackgroundTransparency = 0.2
-label.TextColor3 = Color3.fromRGB(255,80,80)
+label.TextColor3 = Color3.fromRGB(255, 80, 80)
 label.TextScaled = true
 label.Font = Enum.Font.GothamBold
-label.Text = "Hit Amplifier: ACTIVE"
 
-------------------------------------------------------------
--- STATE
-------------------------------------------------------------
+local function updateLabel()
+	label.Text = ACTIVE and "⚔️ Hit Amplifier: ACTIVE [H]" or "⚔️ Hit Amplifier: OFF [H]"
+end
+updateLabel()
+
+-- ============ STATE / TOOL CACHE ============
 local accumulator = 0
-local cachedTools = {}
+local tools = {}
 
-------------------------------------------------------------
--- TOOL HELPERS
-------------------------------------------------------------
-local function refreshTools()
-	cachedTools = {}
+local function rebuildTools()
+	for i = #tools, 1, -1 do
+		if not tools[i] or not tools[i].Parent then table.remove(tools, i) end
+	end
 	local char = LocalPlayer.Character
 	if not char then return end
 	for _, t in ipairs(char:GetChildren()) do
-		if t:IsA("Tool") then
-			table.insert(cachedTools, t)
+		if t:IsA("Tool") and not table.find(tools, t) then
+			tools[#tools + 1] = t
 		end
 	end
 end
 
-local function pulseTools()
-	for _, tool in ipairs(cachedTools) do
-		for _ = 1, BURST_COUNT do
-			pcall(tool.Activate, tool)
+local function refreshSoon()
+	task.defer(rebuildTools)
+end
+
+local function onCharTool(o)
+	if o:IsA("Tool") then refreshSoon() end
+end
+
+LocalPlayer.CharacterAdded:Connect(function(char)
+	rebuildTools()
+	char.ChildAdded:Connect(onCharTool)
+	char.ChildRemoved:Connect(onCharTool)
+end)
+
+if LocalPlayer.Character then
+	LocalPlayer.Character.ChildAdded:Connect(onCharTool)
+	LocalPlayer.Character.ChildRemoved:Connect(onCharTool)
+end
+rebuildTools()
+
+-- ============ PULSE ============
+local function pulse()
+	for i = 1, #tools do
+		local t = tools[i]
+		if t and t.Parent then
+			for _ = 1, BURST_COUNT do
+				pcall(t.Activate, t)
+			end
+			local rem = t:FindFirstChild("FightEvent")
+			if rem then
+				pcall(rem.FireServer, rem)
+			end
 		end
 	end
 end
 
-LocalPlayer.CharacterAdded:Connect(refreshTools)
-refreshTools()
-
-------------------------------------------------------------
--- TARGET SCAN
-------------------------------------------------------------
+-- ============ TARGET SCAN ============
 local overlapParams = OverlapParams.new()
 overlapParams.FilterType = Enum.RaycastFilterType.Blacklist
 
-------------------------------------------------------------
--- CORE LOOP
-------------------------------------------------------------
-RunService.Heartbeat:Connect(function(dt)
+-- ============ ENGINE ============
+RunService.Stepped:Connect(function(dt)
 	if not ACTIVE then return end
 	local char = LocalPlayer.Character
 	if not char then return end
@@ -92,22 +123,20 @@ RunService.Heartbeat:Connect(function(dt)
 		if model then
 			local hum = model:FindFirstChildOfClass("Humanoid")
 			if hum and hum.Health > 0 then
-				pulseTools() -- micro-burst
+				pulse()
 				break
 			end
 		end
 	end
 end)
 
-------------------------------------------------------------
--- TOGGLE
-------------------------------------------------------------
+-- ============ TOGGLE ============
 UIS.InputBegan:Connect(function(input, gpe)
 	if gpe then return end
 	if input.KeyCode == TOGGLE_KEY then
 		ACTIVE = not ACTIVE
-		label.Text = ACTIVE and "Hit Amplifier: ACTIVE" or "Hit Amplifier: OFF"
+		updateLabel()
 	end
 end)
 
-print("⚔️ Ultra Smart Hit Amplifier Loaded")
+print("⚔️ Ultra Smart Hit Amplifier V3 Loaded")

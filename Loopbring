@@ -1,8 +1,5 @@
---// ⚡ LOOPBRING V4 (STABLE + RESPAWN SAFE + SAME UI)
-
---------------------------------------------------
--- SERVICES
---------------------------------------------------
+--// ⚡ LOOPBRING V5 - HYPER STABLE + RESPAWN SAFE + SAME UI
+--// 60Hz snap, bring-kill touch layer, zero physics-fighting, auto-repressurize
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -10,67 +7,78 @@ local UIS = game:GetService("UserInputService")
 
 local LocalPlayer = Players.LocalPlayer
 
---------------------------------------------------
--- CONFIG
---------------------------------------------------
+if getgenv().SPT_Loaded and getgenv().SPT_Loaded["Loopbring"] then
+	print("⚡ Loopbring already loaded.")
+	return
+end
+getgenv().SPT_Loaded = getgenv().SPT_Loaded or {}
+getgenv().SPT_Loaded["Loopbring"] = true
 
-local distance = 2
+-- ============ CONFIG ============
+getgenv().SPT_Loopbring = getgenv().SPT_Loopbring or {}
+local G = getgenv().SPT_Loopbring
+
+local distance = typeof(G.Distance) == "number" and G.Distance or 2
 local AUTO_REJOIN = true
 local MEMORY_TIME = 300
 
-local ACTIVE_INTERVAL = 0.015
-local IDLE_INTERVAL = 0.08
+local ACTIVE_INTERVAL = 1 / 60   -- 60Hz snap while dragging
+local IDLE_INTERVAL = 1 / 15
+local MAX_RANGE = 500            -- ignore targets at insane distances
+local TOUCH_BURST = 3            -- bring-kill touch pairs
 
---------------------------------------------------
--- STATE
---------------------------------------------------
-
+-- ============ STATE ============
 local trackedTargets = {}
 local targetMemory = {}
 
 local localCharacter
 local localRoot
-
--- 🔥 fixes respawn “fighting”
 local localEpoch = 0
 
---------------------------------------------------
--- LOCAL CHARACTER (FIXED SPAWN STABILITY)
---------------------------------------------------
+local myToolParts = {}           -- cached touch parts for bring-kill
 
+local function updateMyTools()
+	table.clear(myToolParts)
+	local char = LocalPlayer.Character
+	if not char then return end
+	for _, t in ipairs(char:GetChildren()) do
+		if t:IsA("Tool") then
+			local tx = t:FindFirstChildWhichIsA("TouchTransmitter", true)
+			local p = tx and tx.Parent
+			if p and p:IsA("BasePart") then myToolParts[#myToolParts + 1] = p end
+		end
+	end
+end
+
+-- ============ LOCAL CHARACTER ============
 local function bindLocalCharacter(char)
-
 	localEpoch += 1
 	local myEpoch = localEpoch
-
 	localCharacter = char
 	localRoot = nil
-
 	if not char then return end
-
 	local hrp = char:FindFirstChild("HumanoidRootPart")
-	if not hrp then
-		hrp = char:WaitForChild("HumanoidRootPart", 5)
-	end
-
-	-- 🔥 stabilize AFTER spawn (critical fix)
-	task.delay(0.12, function()
+	if not hrp then hrp = char:WaitForChild("HumanoidRootPart", 5) end
+	task.delay(0.05, function()
 		if localEpoch == myEpoch then
 			localRoot = hrp
+			updateMyTools()
 		end
 	end)
 end
 
-LocalPlayer.CharacterAdded:Connect(bindLocalCharacter)
+LocalPlayer.CharacterAdded:Connect(function(char)
+	bindLocalCharacter(char)
+	local function onTool(c)
+		if c:IsA("Tool") then task.defer(updateMyTools) end
+	end
+	char.ChildAdded:Connect(onTool)
+	char.ChildRemoved:Connect(onTool)
+end)
 
-if LocalPlayer.Character then
-	bindLocalCharacter(LocalPlayer.Character)
-end
+if LocalPlayer.Character then bindLocalCharacter(LocalPlayer.Character) end
 
---------------------------------------------------
--- TARGET DATA
---------------------------------------------------
-
+-- ============ TARGET DATA ============
 local function createTargetData(player)
 	return {
 		Player = player,
@@ -78,16 +86,11 @@ local function createTargetData(player)
 		Root = nil,
 		Humanoid = nil,
 		Alive = false,
-		epoch = 0
+		epoch = 0,
 	}
 end
 
---------------------------------------------------
--- BIND TARGET CHARACTER (FIXED VALIDATION)
---------------------------------------------------
-
 local function bindTargetCharacter(data, char)
-
 	data.epoch += 1
 	local myEpoch = data.epoch
 
@@ -95,22 +98,13 @@ local function bindTargetCharacter(data, char)
 	data.Root = nil
 	data.Humanoid = nil
 	data.Alive = false
-
 	if not char then return end
 
 	local root = char:FindFirstChild("HumanoidRootPart")
-	if not root then
-		root = char:WaitForChild("HumanoidRootPart", 5)
-	end
-
+	if not root then root = char:WaitForChild("HumanoidRootPart", 5) end
 	local hum = char:FindFirstChildOfClass("Humanoid")
-	if not hum then
-		hum = char:WaitForChild("Humanoid", 5)
-	end
-
-	-- 🔥 ignore stale bindings
+	if not hum then hum = char:WaitForChild("Humanoid", 5) end
 	if data.epoch ~= myEpoch then return end
-
 	if not root or not hum then return end
 
 	data.Root = root
@@ -123,19 +117,12 @@ local function bindTargetCharacter(data, char)
 	end)
 end
 
---------------------------------------------------
--- TRACKING
---------------------------------------------------
-
 local function trackPlayer(player)
-
 	local data = createTargetData(player)
 	trackedTargets[player.Name] = data
-
 	if player.Character then
 		task.spawn(bindTargetCharacter, data, player.Character)
 	end
-
 	player.CharacterAdded:Connect(function(char)
 		bindTargetCharacter(data, char)
 	end)
@@ -145,40 +132,24 @@ local function untrackPlayer(name)
 	trackedTargets[name] = nil
 end
 
---------------------------------------------------
--- START / STOP
---------------------------------------------------
-
+-- ============ START / STOP ============
 local function startBring(name)
 	local plr = Players:FindFirstChild(name)
 	if not plr then return end
-
 	targetMemory[name] = tick()
-
-	if not trackedTargets[name] then
-		trackPlayer(plr)
-	end
+	if not trackedTargets[name] then trackPlayer(plr) end
 end
 
 local function stopBring(name)
 	trackedTargets[name] = nil
 	targetMemory[name] = nil
 end
-
---------------------------------------------------
--- ENGINE
---------------------------------------------------
-
+-- ============ ENGINE (60Hz snap + bring-kill) ============
 local lastUpdate = 0
 
-RunService.PreSimulation:Connect(function()
-
+RunService.Stepped:Connect(function()
 	local myRoot = localRoot
 	if not myRoot then return end
-
-	--------------------------------------------------
-	-- CLEAN ACTIVE COUNT (FIXED)
-	--------------------------------------------------
 
 	local activeCount = 0
 	for _, data in pairs(trackedTargets) do
@@ -187,66 +158,59 @@ RunService.PreSimulation:Connect(function()
 		end
 	end
 
-	local interval = (activeCount > 0) and ACTIVE_INTERVAL or IDLE_INTERVAL
-
+	local interval = activeCount > 0 and ACTIVE_INTERVAL or IDLE_INTERVAL
 	local now = os.clock()
 	if now - lastUpdate < interval then return end
 	lastUpdate = now
 
-	--------------------------------------------------
-	-- TARGET POSITION
-	--------------------------------------------------
-
-	local targetPos =
-		myRoot.Position +
-		myRoot.CFrame.LookVector * distance
-
-	--------------------------------------------------
-	-- MOVE LOOP (SAFE + NO SPAWN FIGHTING)
-	--------------------------------------------------
+	local myPos = myRoot.Position
+	local targetPos = myPos + myRoot.CFrame.LookVector * distance
 
 	for _, data in pairs(trackedTargets) do
-
 		local root = data.Root
 		local hum = data.Humanoid
-
-		-- 🔥 HARD VALIDATION (fixes respawn jitter)
-		if not root or not hum then continue end
-		if hum.Health <= 0 then continue end
-		if not root.Parent then continue end
-
-		-- 🔥 spawn safety buffer (prevents instant fighting)
-		if (root.Position - myRoot.Position).Magnitude > 500 then
-			continue
+		if root and hum and hum.Health > 0 and root.Parent then
+			local dx, dy, dz = root.Position.X - myPos.X, root.Position.Y - myPos.Y, root.Position.Z - myPos.Z
+			local dsq = dx * dx + dy * dy + dz * dz
+			if dsq <= MAX_RANGE * MAX_RANGE then
+				-- zero momentum so physics cannot repel the snap
+				pcall(function()
+					root.AssemblyLinearVelocity = Vector3.zero
+				end)
+				-- snap the target in front of us, facing away
+				root.CFrame = CFrame.new(targetPos, myPos) * CFrame.Angles(0, math.rad(180), 0)
+				-- bring-kill: touch them with every equipped tool
+				for i = 1, #myToolParts do
+					local tp = myToolParts[i]
+					if tp and tp.Parent then
+						for _ = 1, TOUCH_BURST do
+							firetouchinterest(tp, root, 0)
+							firetouchinterest(tp, root, 1)
+						end
+					end
+				end
+			end
 		end
-
-		root.CFrame =
-			CFrame.new(targetPos, myRoot.Position)
-			* CFrame.Angles(0, math.rad(180), 0)
 	end
 end)
 
---------------------------------------------------
--- GUI SETUP
---------------------------------------------------
-
+-- ============ GUI ============
 local gui = Instance.new("ScreenGui")
 gui.Name = "LoopbringGUI"
 gui.ResetOnSpawn = false
 gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
-local GLASS_BG = Color3.fromRGB(10,12,18)
-local BLUE = Color3.fromRGB(255,0,0)
-local TEXT = Color3.fromRGB(210,225,255)
-local MUTED = Color3.fromRGB(90,120,160)
-local ACTIVE_BG = Color3.fromRGB(18,32,55)
+local GLASS_BG = Color3.fromRGB(10, 12, 18)
+local BLUE = Color3.fromRGB(255, 0, 0)
+local TEXT = Color3.fromRGB(210, 225, 255)
+local MUTED = Color3.fromRGB(90, 120, 160)
+local ACTIVE_BG = Color3.fromRGB(18, 32, 55)
 
-local function round(obj,r)
-	Instance.new("UICorner",obj).CornerRadius = UDim.new(0,r)
+local function round(obj, r)
+	Instance.new("UICorner", obj).CornerRadius = UDim.new(0, r)
 end
 
-local function stroke(obj,t,color,tr)
-
+local function stroke(obj, t, color, tr)
 	local s = Instance.new("UIStroke")
 	s.Thickness = t
 	s.Color = color
@@ -254,221 +218,127 @@ local function stroke(obj,t,color,tr)
 	s.Parent = obj
 end
 
---------------------------------------------------
--- TOGGLE BUTTON
---------------------------------------------------
-
-local toggleBtn = Instance.new("TextButton")
-toggleBtn.Parent = gui
-
-toggleBtn.Size = UDim2.fromOffset(46,46)
-toggleBtn.Position = UDim2.new(1,-70,0,120)
-
+local toggleBtn = Instance.new("TextButton", gui)
+toggleBtn.Size = UDim2.fromOffset(46, 46)
+toggleBtn.Position = UDim2.new(1, -70, 0, 120)
 toggleBtn.Text = "⇩"
 toggleBtn.Font = Enum.Font.GothamBold
 toggleBtn.TextSize = 22
-
 toggleBtn.BackgroundColor3 = GLASS_BG
 toggleBtn.TextColor3 = TEXT
 toggleBtn.AutoButtonColor = false
+round(toggleBtn, 23)
+stroke(toggleBtn, 1.5, BLUE, 0.15)
 
-round(toggleBtn,23)
-stroke(toggleBtn,1.5,BLUE,0.15)
-
---------------------------------------------------
--- MAIN FRAME
---------------------------------------------------
-
-local frame = Instance.new("Frame")
-frame.Parent = gui
-
-frame.Position = UDim2.new(1,-280,0,170)
-frame.Size = UDim2.fromOffset(240,280)
-
+local frame = Instance.new("Frame", gui)
+frame.Position = UDim2.new(1, -280, 0, 170)
+frame.Size = UDim2.fromOffset(240, 280)
 frame.BackgroundColor3 = GLASS_BG
-
 frame.Visible = false
+round(frame, 16)
+stroke(frame, 1.6, BLUE, 0.2)
 
-round(frame,16)
-stroke(frame,1.6,BLUE,0.2)
-
---------------------------------------------------
--- HEADER
---------------------------------------------------
-
-local header = Instance.new("Frame")
-header.Parent = frame
-
-header.Size = UDim2.new(1,0,0,40)
+local header = Instance.new("Frame", frame)
+header.Size = UDim2.new(1, 0, 0, 40)
 header.BackgroundTransparency = 1
 
-local minusBtn = Instance.new("TextButton")
-minusBtn.Parent = header
-
-minusBtn.Size = UDim2.fromOffset(40,32)
-minusBtn.Position = UDim2.fromOffset(6,4)
-
+local minusBtn = Instance.new("TextButton", header)
+minusBtn.Size = UDim2.fromOffset(40, 32)
+minusBtn.Position = UDim2.fromOffset(6, 4)
 minusBtn.Text = "-"
 minusBtn.Font = Enum.Font.GothamBold
 minusBtn.TextSize = 18
-
 minusBtn.BackgroundColor3 = GLASS_BG
 minusBtn.TextColor3 = TEXT
 minusBtn.AutoButtonColor = false
-
-round(minusBtn,8)
-stroke(minusBtn,1,BLUE,0.25)
+round(minusBtn, 8)
+stroke(minusBtn, 1, BLUE, 0.25)
 
 local plusBtn = minusBtn:Clone()
 plusBtn.Parent = header
 plusBtn.Text = "+"
-plusBtn.Position = UDim2.new(1,-46,0,4)
+plusBtn.Position = UDim2.new(1, -46, 0, 4)
 
-local distanceLabel = Instance.new("TextLabel")
-distanceLabel.Parent = header
-
-distanceLabel.Size = UDim2.new(1,-100,1,0)
-distanceLabel.Position = UDim2.fromOffset(50,0)
-
-distanceLabel.Text = "Distance: "..distance
+local distanceLabel = Instance.new("TextLabel", header)
+distanceLabel.Size = UDim2.new(1, -100, 1, 0)
+distanceLabel.Position = UDim2.fromOffset(50, 0)
+distanceLabel.Text = "Distance: " .. distance
 distanceLabel.TextColor3 = TEXT
 distanceLabel.Font = Enum.Font.GothamBold
 distanceLabel.TextSize = 14
 distanceLabel.BackgroundTransparency = 1
 
---------------------------------------------------
--- PLAYER LIST
---------------------------------------------------
-
-local scroll = Instance.new("ScrollingFrame")
-scroll.Parent = frame
-
-scroll.Position = UDim2.fromOffset(0,50)
-scroll.Size = UDim2.new(1,0,1,-50)
-
-scroll.CanvasSize = UDim2.new(0,0,0,0)
+local scroll = Instance.new("ScrollingFrame", frame)
+scroll.Position = UDim2.fromOffset(0, 50)
+scroll.Size = UDim2.new(1, 0, 1, -50)
+scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 scroll.ScrollBarThickness = 4
 scroll.BackgroundTransparency = 1
 
-local layout = Instance.new("UIListLayout")
-layout.Parent = scroll
-layout.Padding = UDim.new(0,6)
-
---------------------------------------------------
--- LIST REFRESH
---------------------------------------------------
-
+local layout = Instance.new("UIListLayout", scroll)
+layout.Padding = UDim.new(0, 6)
+-- ============ LIST REFRESH ============
 local function refreshList()
-
-	for _,c in ipairs(scroll:GetChildren()) do
-		if c:IsA("TextButton") then
-			c:Destroy()
-		end
+	for _, c in ipairs(scroll:GetChildren()) do
+		if c:IsA("TextButton") then c:Destroy() end
 	end
-
-	for _,p in ipairs(Players:GetPlayers()) do
-
+	for _, p in ipairs(Players:GetPlayers()) do
 		if p ~= LocalPlayer then
-
-			local active =
-				trackedTargets[p.Name] ~= nil
-
-			local btn = Instance.new("TextButton")
-			btn.Parent = scroll
-
-			btn.Size = UDim2.new(1,-10,0,32)
-
+			local on = trackedTargets[p.Name] ~= nil
+			local btn = Instance.new("TextButton", scroll)
+			btn.Size = UDim2.new(1, -10, 0, 32)
 			btn.Text = p.Name
 			btn.Font = Enum.Font.Gotham
 			btn.TextSize = 14
-
 			btn.TextColor3 = TEXT
-			btn.BackgroundColor3 =
-				active and ACTIVE_BG or GLASS_BG
-
+			btn.BackgroundColor3 = on and ACTIVE_BG or GLASS_BG
 			btn.AutoButtonColor = false
-
-			round(btn,10)
-			stroke(
-				btn,
-				1,
-				active and BLUE or MUTED,
-				0.3
-			)
-
+			round(btn, 10)
+			stroke(btn, 1, on and BLUE or MUTED, 0.3)
 			btn.MouseButton1Click:Connect(function()
-
-				if active then
+				if on then
 					stopBring(p.Name)
 				else
 					startBring(p.Name)
 				end
-
 				refreshList()
 			end)
 		end
 	end
-
-	scroll.CanvasSize =
-		UDim2.new(
-			0,
-			0,
-			0,
-			layout.AbsoluteContentSize.Y + 6
-		)
+	scroll.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 6)
 end
 
---------------------------------------------------
--- PLAYER EVENTS
---------------------------------------------------
-
+-- ============ PLAYER EVENTS ============
 Players.PlayerAdded:Connect(function(p)
-
 	if AUTO_REJOIN then
-
 		local mem = targetMemory[p.Name]
-
-		if mem and tick()-mem < MEMORY_TIME then
+		if mem and tick() - mem < MEMORY_TIME then
 			startBring(p.Name)
 		end
 	end
-
 	refreshList()
 end)
 
 Players.PlayerRemoving:Connect(function(p)
-
 	untrackPlayer(p.Name)
-
 	refreshList()
 end)
 
---------------------------------------------------
--- DRAG SYSTEM
---------------------------------------------------
-
+-- ============ DRAG ============
 local dragging = false
 local dragInput
 local dragStart
 local startPos
 
 toggleBtn.InputBegan:Connect(function(input)
-
-	if input.UserInputType ==
-		Enum.UserInputType.MouseButton1
-	or input.UserInputType ==
-		Enum.UserInputType.Touch then
-
+	if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
 		dragging = true
 		dragInput = input
 		dragStart = input.Position
 		startPos = toggleBtn.Position
-
 		input.Changed:Connect(function()
-
-			if input.UserInputState ==
-				Enum.UserInputState.End then
-
+			if input.UserInputState == Enum.UserInputState.End then
 				dragging = false
 			end
 		end)
@@ -476,50 +346,39 @@ toggleBtn.InputBegan:Connect(function(input)
 end)
 
 UIS.InputChanged:Connect(function(input)
-
 	if input == dragInput and dragging then
-
 		local delta = input.Position - dragStart
-
 		toggleBtn.Position = UDim2.new(
 			startPos.X.Scale,
 			startPos.X.Offset + delta.X,
 			startPos.Y.Scale,
 			startPos.Y.Offset + delta.Y
 		)
-
 		frame.Position = UDim2.fromOffset(
-			toggleBtn.AbsolutePosition.X
-				- frame.AbsoluteSize.X - 10,
+			toggleBtn.AbsolutePosition.X - frame.AbsoluteSize.X - 10,
 			toggleBtn.AbsolutePosition.Y
 		)
 	end
 end)
 
---------------------------------------------------
--- UI EVENTS
---------------------------------------------------
-
+-- ============ UI EVENTS ============
 toggleBtn.MouseButton1Click:Connect(function()
 	frame.Visible = not frame.Visible
 end)
 
 plusBtn.MouseButton1Click:Connect(function()
-
 	distance += 1
-	distanceLabel.Text = "Distance: "..distance
+	distanceLabel.Text = "Distance: " .. distance
+	getgenv().SPT_Loopbring.Distance = distance
 end)
 
 minusBtn.MouseButton1Click:Connect(function()
-
-	distance = math.max(1,distance-1)
-	distanceLabel.Text = "Distance: "..distance
+	distance = math.max(1, distance - 1)
+	distanceLabel.Text = "Distance: " .. distance
+	getgenv().SPT_Loopbring.Distance = distance
 end)
 
---------------------------------------------------
--- INIT
---------------------------------------------------
-
+-- ============ INIT ============
 refreshList()
 
-print("⚡ Loopbring V3 Loaded")
+print("⚡ Loopbring V5 Loaded")

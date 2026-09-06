@@ -1,9 +1,7 @@
 -- ============================
--- ⚡ Aura Core Configuration
+-- ⚡ TARGET AURA V3 - precision multi-hit, fixed overlap, cached tools
+-- Fixed reversed touch order + broken overlap filter from V2.
 -- ============================
-
-local auraRange = math.huge
-local auraSize = Vector3.new(30, 30, 30)
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -11,93 +9,68 @@ local RunService = game:GetService("RunService")
 local lp = Players.LocalPlayer
 local PlayerGui = lp:WaitForChild("PlayerGui")
 
--- Global state
-local Disable = Instance.new("BindableEvent")
-getgenv().configs = {
-	connections = {},
-	Disable = Disable,
-	Size = auraSize,
-	TargetList = {},
-}
+if getgenv().SPT_Loaded and getgenv().SPT_Loaded["Target Aura"] then
+	print("⚡ Target Aura already loaded.")
+	return
+end
+getgenv().SPT_Loaded = getgenv().SPT_Loaded or {}
+getgenv().SPT_Loaded["Target Aura"] = true
 
+-- ============ SHARED CONFIG ============
 local Run = true
-local Ignorelist = OverlapParams.new()
-Ignorelist.FilterType = Enum.RaycastFilterType.Include
+local auraSize = Vector3.new(30, 30, 30)
+getgenv().configs = getgenv().configs or {}
+getgenv().configs.Size = auraSize
+getgenv().configs.TargetList = getgenv().configs.TargetList or {}
 
--- ============================
--- 🔧 Helper Functions
--- ============================
+local Disable = Instance.new("BindableEvent")
+getgenv().configs.connections = getgenv().configs.connections or {}
+table.insert(getgenv().configs.connections, Disable.Event:Connect(function()
+	Run = false
+end))
 
-local function getchar(plr)
-	return (plr or lp).Character
-end
+-- ============ OVERLAP (now actually works) ============
+local overlapParams = OverlapParams.new()
+overlapParams.FilterType = Enum.RaycastFilterType.Blacklist
 
-local function GetTouchInterest(tool)
-	for _, obj in ipairs(tool:GetDescendants()) do
-		if obj:IsA("TouchTransmitter") and obj.Parent:IsA("BasePart") then
-			return obj.Parent
+-- ============ TOOL CACHE ============
+local toolCache = {}
+
+local function rebuildTools()
+	table.clear(toolCache)
+	local char = lp.Character
+	if not char then return end
+	overlapParams.FilterDescendantsInstances = { char }
+	for _, t in ipairs(char:GetChildren()) do
+		if t:IsA("Tool") then
+			local tx = t:FindFirstChildWhichIsA("TouchTransmitter", true)
+			local part = tx and tx.Parent
+			if part and part:IsA("BasePart") then toolCache[#toolCache + 1] = part end
 		end
 	end
 end
 
-local function GetCharacters()
-	local t = {}
-	for _, p in ipairs(Players:GetPlayers()) do
-		if p ~= lp and p.Character and p.Character:FindFirstChild("Humanoid") then
-			if p.Character.Humanoid.Health > 0 then
-				table.insert(t, p.Character)
-			end
-		end
-	end
-	return t
+local function onToolChange(c)
+	if c:IsA("Tool") then task.defer(rebuildTools) end
 end
 
-local function Attack(tool, touch, part)
-	if tool:IsDescendantOf(workspace) then
-		firetouchinterest(touch, part, 1)
-		firetouchinterest(touch, part, 0)
-	end
+lp.CharacterAdded:Connect(function(char)
+	rebuildTools()
+	char.ChildAdded:Connect(onToolChange)
+	char.ChildRemoved:Connect(onToolChange)
+end)
+if lp.Character then
+	rebuildTools()
+	lp.Character.ChildAdded:Connect(onToolChange)
+	lp.Character.ChildRemoved:Connect(onToolChange)
 end
-
-local function ApplyDamageInstant(tool, touch)
-	local parts = workspace:GetPartBoundsInBox(
-		touch.CFrame,
-		touch.Size + getgenv().configs.Size,
-		Ignorelist
-	)
-
-	for _, p in ipairs(parts) do
-		local char = p:FindFirstAncestorWhichIsA("Model")
-		if char then
-			for _, target in ipairs(getgenv().configs.TargetList) do
-				if target.Character == char then
-					Attack(tool, touch, p)
-					break
-				end
-			end
-		end
-	end
-end
-
--- Disable hook
-table.insert(getgenv().configs.connections,
-	Disable.Event:Connect(function()
-		Run = false
-	end)
-)
-
--- ============================
--- 🖤💙 Black & Blue UI
--- ============================
-
+-- ============ UI ============
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "AuraGui"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = PlayerGui
 
--- === Toggle Button ===
-local AuraBtn = Instance.new("TextButton")
-AuraBtn.Parent = ScreenGui
+local AuraBtn = Instance.new("TextButton", ScreenGui)
 AuraBtn.Size = UDim2.fromOffset(96, 34)
 AuraBtn.Position = UDim2.fromScale(1, 0)
 AuraBtn.AnchorPoint = Vector2.new(1, 0)
@@ -105,30 +78,22 @@ AuraBtn.Text = "TARGET AURA"
 AuraBtn.Font = Enum.Font.GothamBold
 AuraBtn.TextSize = 13
 AuraBtn.AutoButtonColor = false
-
 AuraBtn.BackgroundColor3 = Color3.fromRGB(8, 8, 10)
 AuraBtn.TextColor3 = Color3.fromRGB(200, 220, 255)
-
 Instance.new("UICorner", AuraBtn).CornerRadius = UDim.new(0, 12)
-
 local BtnStroke = Instance.new("UIStroke", AuraBtn)
 BtnStroke.Color = Color3.fromRGB(60, 110, 255)
 BtnStroke.Thickness = 1.4
 BtnStroke.Transparency = 0.15
 
--- === Player List Panel (UNDER BUTTON) ===
-local PlayerFrame = Instance.new("Frame")
-PlayerFrame.Parent = ScreenGui
-PlayerFrame.Size = UDim2.fromOffset(180, 300)
+local PlayerFrame = Instance.new("Frame", ScreenGui)
+PlayerFrame.Size = UDim2.fromOffset(180, 330)
 PlayerFrame.AnchorPoint = Vector2.new(1, 0)
 PlayerFrame.Position = AuraBtn.Position + UDim2.fromOffset(0, AuraBtn.Size.Y.Offset + 6)
 PlayerFrame.Visible = false
-
 PlayerFrame.BackgroundColor3 = Color3.fromRGB(6, 6, 8)
 PlayerFrame.BackgroundTransparency = 0.05
-
 Instance.new("UICorner", PlayerFrame).CornerRadius = UDim.new(0, 16)
-
 local FrameStroke = Instance.new("UIStroke", PlayerFrame)
 FrameStroke.Color = Color3.fromRGB(60, 110, 255)
 FrameStroke.Thickness = 1.4
@@ -138,139 +103,164 @@ local Layout = Instance.new("UIListLayout", PlayerFrame)
 Layout.Padding = UDim.new(0, 6)
 Layout.SortOrder = Enum.SortOrder.LayoutOrder
 
--- ============================
--- 👥 Player Button Factory
--- ============================
+-- quick select-all / clear-all
+local function addQuick(text, order, onClick)
+	local b = Instance.new("TextButton", PlayerFrame)
+	b.Name = "QuickBtn"
+	b.Size = UDim2.new(1, -12, 0, 24)
+	b.Text = text
+	b.Font = Enum.Font.Gotham
+	b.TextSize = 12
+	b.AutoButtonColor = false
+	b.BackgroundColor3 = Color3.fromRGB(20, 25, 45)
+	b.TextColor3 = Color3.fromRGB(215, 225, 255)
+	b.LayoutOrder = order
+	Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
+	b.MouseButton1Click:Connect(onClick)
+end
 
+-- ============ PLAYER BUTTONS ============
 local function createPlayerButton(plr)
-	local btn = Instance.new("TextButton")
+	local btn = Instance.new("TextButton", PlayerFrame)
 	btn.Size = UDim2.new(1, -12, 0, 26)
 	btn.Text = plr.Name
 	btn.Font = Enum.Font.Gotham
 	btn.TextSize = 13
 	btn.AutoButtonColor = false
-
 	btn.BackgroundColor3 = Color3.fromRGB(12, 12, 16)
 	btn.TextColor3 = Color3.fromRGB(215, 225, 255)
-
 	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 10)
-
 	local stroke = Instance.new("UIStroke", btn)
 	stroke.Thickness = 1
 	stroke.Color = Color3.fromRGB(90, 120, 255)
 	stroke.Transparency = 0.45
 
+	local function paint()
+		local on = table.find(getgenv().configs.TargetList, plr) ~= nil
+		btn.BackgroundColor3 = on and Color3.fromRGB(20, 25, 45) or Color3.fromRGB(12, 12, 16)
+		stroke.Color = on and Color3.fromRGB(90, 150, 255) or Color3.fromRGB(90, 120, 255)
+	end
+
 	btn.MouseButton1Click:Connect(function()
 		local list = getgenv().configs.TargetList
 		local idx = table.find(list, plr)
-
 		if idx then
 			table.remove(list, idx)
-			btn.BackgroundColor3 = Color3.fromRGB(12, 12, 16)
-			stroke.Color = Color3.fromRGB(90, 120, 255)
 		else
 			table.insert(list, plr)
-			btn.BackgroundColor3 = Color3.fromRGB(20, 25, 45)
-			stroke.Color = Color3.fromRGB(90, 150, 255)
 		end
+		paint()
 	end)
-
+	paint()
 	return btn
 end
 
 local function UpdatePlayers()
 	for _, c in ipairs(PlayerFrame:GetChildren()) do
-		if c:IsA("TextButton") then
+		if c:IsA("TextButton") and c.Name ~= "QuickBtn" then
 			c:Destroy()
 		end
 	end
-
+	local order = 10
 	for _, p in ipairs(Players:GetPlayers()) do
 		if p ~= lp then
-			createPlayerButton(p).Parent = PlayerFrame
+			local b = createPlayerButton(p)
+			b.LayoutOrder = order
+			order += 1
 		end
 	end
 end
 
--- Toggle panel
+addQuick("ALL", 1, function()
+	local list = getgenv().configs.TargetList
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= lp and not table.find(list, p) then table.insert(list, p) end
+	end
+	UpdatePlayers()
+end)
+addQuick("NONE", 2, function()
+	table.clear(getgenv().configs.TargetList)
+	UpdatePlayers()
+end)
+
 AuraBtn.MouseButton1Click:Connect(function()
 	PlayerFrame.Visible = not PlayerFrame.Visible
-	if PlayerFrame.Visible then
-		UpdatePlayers()
-	end
+	if PlayerFrame.Visible then UpdatePlayers() end
 end)
 
 Players.PlayerAdded:Connect(UpdatePlayers)
 Players.PlayerRemoving:Connect(UpdatePlayers)
-
--- ============================
--- ⚡ OPTIMIZED TARGET AURA CORE
--- ============================
-
+UpdatePlayers()
+-- ============ ATTACK ENGINE ============
 local lastFire = 0
-local FIRE_RATE = 1/30
+local FIRE_RATE = 1 / 60
+local TOUCH_BURST = 2
 
-local MAX_PARTS_PER_TARGET = 1
+local PRIORITY = { "HumanoidRootPart", "Head" }
 
 local function getTargets()
 	local t = {}
-
-	for _, plr in ipairs(getgenv().configs.TargetList) do
+	local list = getgenv().configs.TargetList
+	for _, plr in ipairs(list) do
 		local char = plr.Character
-		if char and char:FindFirstChild("HumanoidRootPart") then
-			local hum = char:FindFirstChild("Humanoid")
-			if hum and hum.Health > 0 then
-				table.insert(t, char)
+		if char then
+			local hum = char:FindFirstChildOfClass("Humanoid")
+			local hrp = char:FindFirstChild("HumanoidRootPart")
+			if hum and hrp and hum.Health > 0 then
+				t[#t + 1] = char
 			end
 		end
 	end
-
 	return t
 end
 
-local PRIORITY_PARTS = {
-	"HumanoidRootPart",
-}
-
-local function hitTarget(tool, touch, char)
-
-	for i = 1, #PRIORITY_PARTS do
-		local part = char:FindFirstChild(PRIORITY_PARTS[i])
-
+local function hitTarget(touch, char)
+	for i = 1, #PRIORITY do
+		local part = char:FindFirstChild(PRIORITY[i])
 		if part and part:IsA("BasePart") then
-			firetouchinterest(touch, part, 0)
-			firetouchinterest(touch, part, 1)
+			for _ = 1, TOUCH_BURST do
+				firetouchinterest(touch, part, 0)
+				firetouchinterest(touch, part, 1)
+			end
 		end
 	end
 end
 
-RunService.Heartbeat:Connect(function()
-
+RunService.Stepped:Connect(function()
 	if not Run then return end
-	if #getgenv().configs.TargetList == 0 then return end
+	local list = getgenv().configs.TargetList
+	if #list == 0 then return end
 
 	local now = os.clock()
 	if now - lastFire < FIRE_RATE then return end
 	lastFire = now
 
-	local char = getchar()
+	local char = lp.Character
 	if not char then return end
 
 	local targets = getTargets()
 	if #targets == 0 then return end
 
-	-- ⚡ STABILIZATION (CRITICAL)
-	RunService.Heartbeat:Wait()
-
-	for _, tool in ipairs(char:GetChildren()) do
-		if tool:IsA("Tool") then
-
-			local touch = GetTouchInterest(tool)
-			if not touch then continue end
-
-			for _, targetChar in ipairs(targets) do
-				hitTarget(tool, touch, targetChar)
+	for i = 1, #toolCache do
+		local touch = toolCache[i]
+		if touch and touch.Parent then
+			-- expanded hitbox: touch every target part inside the aura box
+			local parts = workspace:GetPartBoundsInBox(touch.CFrame, touch.Size + getgenv().configs.Size, overlapParams)
+			for k = 1, #parts do
+				local model = parts[k]:FindFirstAncestorWhichIsA("Model")
+				if model and table.find(targets, model) then
+					for _ = 1, TOUCH_BURST do
+						firetouchinterest(touch, parts[k], 0)
+						firetouchinterest(touch, parts[k], 1)
+					end
+				end
+			end
+			-- guaranteed direct HRP + Head hits
+			for j = 1, #targets do
+				hitTarget(touch, targets[j])
 			end
 		end
 	end
 end)
+
+print("⚡ Target Aura V3 Loaded")

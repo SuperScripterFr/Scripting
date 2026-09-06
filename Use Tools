@@ -1,7 +1,6 @@
-------------------------------------------------------------
--- SERVICES
-------------------------------------------------------------
-
+-- ============================================================
+-- ⚡ USE TOOLS V7 - 90Hz hyper pulse, all tools, cached touch parts
+-- ============================================================
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
@@ -9,489 +8,297 @@ local TweenService = game:GetService("TweenService")
 
 local player = Players.LocalPlayer
 
-------------------------------------------------------------
--- THEME
-------------------------------------------------------------
+-- ============ RE-RUN GUARD ============
+if getgenv().SPT_Loaded and getgenv().SPT_Loaded["Use Tools"] then
+	print("⚡ Use Tools already loaded.")
+	return
+end
+getgenv().SPT_Loaded = getgenv().SPT_Loaded or {}
+getgenv().SPT_Loaded["Use Tools"] = true
 
+-- ============ THEME ============
 local Theme = {
-	Accent = Color3.fromRGB(0,0,0),
-	Glass  = Color3.fromRGB(100,0,0),
-	Text   = Color3.fromRGB(255,0,0),
-	Stroke = Color3.fromRGB(255,0,0)
+	Accent = Color3.fromRGB(0, 0, 0),
+	Glass  = Color3.fromRGB(100, 0, 0),
+	Text   = Color3.fromRGB(255, 0, 0),
+	Stroke = Color3.fromRGB(255, 0, 0),
 }
 
-local ANIM = TweenInfo.new(
-	0.35,
-	Enum.EasingStyle.Quart,
-	Enum.EasingDirection.Out
-)
+local ANIM = TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
 
-local function round(i,r)
+local function round(i, r)
 	local c = Instance.new("UICorner")
-	c.CornerRadius = UDim.new(0,r or 14)
+	c.CornerRadius = UDim.new(0, r or 14)
 	c.Parent = i
 end
 
-local function stroke(i,thick)
+local function stroke(i, thick)
 	local s = Instance.new("UIStroke")
 	s.Color = Theme.Stroke
 	s.Thickness = thick or 4
 	s.Parent = i
 end
 
-------------------------------------------------------------
--- CONFIG
-------------------------------------------------------------
+-- ============ CONFIG ============
+getgenv().SPT_UseTools = getgenv().SPT_UseTools or {}
+local G = getgenv().SPT_UseTools
 
-local APS = 75
-local PULSE_INTERVAL = 1 / APS
+local APS                  = typeof(G.APS) == "number" and G.APS or 90
+local PULSE_INTERVAL       = 1 / APS
+local RESPAWN_BURST_TIME   = 2.0
+local TOUCH_ASSIST_RANGE   = 16
+local TOUCH_ASSIST_BURST   = 2
+local TOGGLE_KEY           = Enum.KeyCode.E
 
-local RESPAWN_BURST_TIME = 2.0
-local TOUCH_ASSIST_RANGE = 14
-local TOUCH_ASSIST_BURST = 1
-
-------------------------------------------------------------
--- STATE
-------------------------------------------------------------
-
+-- ============ STATE ============
 local active = false
 local toolsCache = {}
+local touchParts = {}    -- tool -> touch part
+local remoteCache = {}   -- tool -> FightEvent remote
 
 local currentCharacter
 local currentRoot
 
 local lastPulse = 0
+local lastEquipCheck = 0
+local EQUIP_INTERVAL = 1 / 20
 local burstActive = false
 
-------------------------------------------------------------
--- CHARACTER TRACKING
-------------------------------------------------------------
+local lastTargetScan = 0
+local cachedTarget
 
-local function bindCharacter(char)
-
-	currentCharacter = char
-	currentRoot = nil
-
-	if not char then
-		return
-	end
-
-	currentRoot = char:FindFirstChild("HumanoidRootPart")
-
-		if not currentRoot then
-		task.spawn(function()
-
-			local hrp = char:WaitForChild("HumanoidRootPart",5)
-
-			if currentCharacter == char then
-				currentRoot = hrp
-			end
-		end)
-	end
-end
-
-if player.Character then
-	bindCharacter(player.Character)
-end
-
-player.CharacterAdded:Connect(bindCharacter)
-
-------------------------------------------------------------
--- TOOL CACHE
-------------------------------------------------------------
-
+-- ============ TOOL CACHE ============
 local function refreshTools()
-
 	table.clear(toolsCache)
-
+	table.clear(touchParts)
+	table.clear(remoteCache)
 	local char = currentCharacter
-
-	if not char then
-		return
-	end
-
-	for _,obj in ipairs(char:GetChildren()) do
-		if obj:IsA("Tool") then
-			table.insert(toolsCache,obj)
+	if not char then return end
+	for _, o in ipairs(char:GetChildren()) do
+		if o:IsA("Tool") then
+			toolsCache[#toolsCache + 1] = o
+			local tx = o:FindFirstChildWhichIsA("TouchTransmitter", true)
+			local part = tx and tx.Parent
+			if part and part:IsA("BasePart") then touchParts[o] = part end
+			local rem = o:FindFirstChild("FightEvent")
+			if rem then remoteCache[o] = rem end
 		end
 	end
 end
 
-------------------------------------------------------------
--- EQUIP
-------------------------------------------------------------
+-- ============ CHARACTER (respawn-safe) ============
+local epoch = 0
+local function bindCharacter(char)
+	epoch += 1
+	local myEpoch = epoch
+	currentCharacter = char
+	currentRoot = nil
+	if not char then return end
+	local r = char:FindFirstChild("HumanoidRootPart")
+	if not r then r = char:WaitForChild("HumanoidRootPart", 5) end
+	if epoch == myEpoch and r then currentRoot = r end
+	refreshTools()
+end
 
-local lastEquipCheck = 0
-local EQUIP_INTERVAL = 0.08
-
+-- ============ EQUIP / UNEQUIP ============
 local function equipTools(force)
-
 	local now = os.clock()
-
-	-- ⚡ throttle normal checks
-	if not force and now - lastEquipCheck < EQUIP_INTERVAL then
-		return
-	end
-
+	if not force and now - lastEquipCheck < EQUIP_INTERVAL then return end
 	lastEquipCheck = now
 
 	local char = currentCharacter
-	local backpack = player:FindFirstChildOfClass("Backpack")
-
-	if not char or not backpack then
-		return
-	end
+	local bp = player:FindFirstChildOfClass("Backpack")
+	if not char or not bp then return end
 
 	local changed = false
-
-	--------------------------------------------------------
-	-- EQUIP EVERYTHING
-	--------------------------------------------------------
-
-	for _,tool in ipairs(backpack:GetChildren()) do
-
+	for _, tool in ipairs(bp:GetChildren()) do
 		if tool:IsA("Tool") then
-          tool.Parent = char
-          changed = true
-	   end
+			tool.Parent = char
+			changed = true
+		end
 	end
-
-	--------------------------------------------------------
-	-- REFRESH CACHE ONLY IF NEEDED
-	--------------------------------------------------------
-
-	if changed then
-		refreshTools()
-	end
+	if changed then refreshTools() end
 end
-
-------------------------------------------------------------
--- UNEQUIP
-------------------------------------------------------------
 
 local function unequipTools()
-
 	local char = currentCharacter
-	local backpack = player:FindFirstChildOfClass("Backpack")
-
-	if not char or not backpack then
-		return
+	local bp = player:FindFirstChildOfClass("Backpack")
+	if not char or not bp then return end
+	for _, tool in ipairs(char:GetChildren()) do
+		if tool:IsA("Tool") then tool.Parent = bp end
 	end
-
-	for _,tool in ipairs(char:GetChildren()) do
-		if tool:IsA("Tool") then
-			tool.Parent = backpack
-		end
-	end
-
 	table.clear(toolsCache)
+	table.clear(touchParts)
+	table.clear(remoteCache)
 end
 
-------------------------------------------------------------
--- TOUCH HELPER
-------------------------------------------------------------
-
-local function getTouchPart(tool)
-
-	for _,obj in ipairs(tool:GetDescendants()) do
-		if obj:IsA("TouchTransmitter") then
-			local parent = obj.Parent
-
-			if parent and parent:IsA("BasePart") then
-				return parent
-			end
-		end
-	end
-end
-
-local function getClosestTarget()
-
+-- ============ TARGET (cached every 100ms) ============
+local function getTarget()
+	if os.clock() - lastTargetScan < 0.1 then return cachedTarget end
+	lastTargetScan = os.clock()
 	local myRoot = currentRoot
-
-	if not myRoot then
-		return nil
-	end
-
-	local closest
-	local bestDist = TOUCH_ASSIST_RANGE
-
-	for _,plr in ipairs(Players:GetPlayers()) do
-
+	if not myRoot then cachedTarget = nil return nil end
+	local myPos = myRoot.Position
+	local bestRoot, bestSq = nil, TOUCH_ASSIST_RANGE * TOUCH_ASSIST_RANGE
+	for _, plr in ipairs(Players:GetPlayers()) do
 		if plr ~= player then
-
 			local char = plr.Character
-
 			if char then
-
-				local hum = char:FindFirstChild("Humanoid")
-				local root = char:FindFirstChild("HumanoidRootPart")
-
-				if hum and root and hum.Health > 0 then
-
-					local dist = (root.Position - myRoot.Position).Magnitude
-
-					if dist < bestDist then
-						bestDist = dist
-						closest = root
+				local hum = char:FindFirstChildOfClass("Humanoid")
+				local r = char:FindFirstChild("HumanoidRootPart")
+				if hum and r and hum.Health > 0 then
+					local dx, dy, dz = r.Position.X - myPos.X, r.Position.Y - myPos.Y, r.Position.Z - myPos.Z
+					local dsq = dx * dx + dy * dy + dz * dz
+					if dsq < bestSq then
+						bestSq = dsq
+						bestRoot = r
 					end
 				end
 			end
 		end
 	end
-
-	return closest
+	cachedTarget = bestRoot
+	return bestRoot
 end
 
-local function touchAssist()
-
-	local target = getClosestTarget()
-
-	if not target then
-		return
+-- ============ DAMAGE CORE ============
+local function damagePulse()
+	-- 1) activate every equipped tool
+	for i = 1, #toolsCache do
+		local t = toolsCache[i]
+		if t and t.Parent then pcall(t.Activate, t) end
 	end
 
-	for i = 1,#toolsCache do
-
-		local tool = toolsCache[i]
-
-		if tool and tool.Parent then
-
-			local touchPart = getTouchPart(tool)
-
-			if touchPart then
-
+	-- 2) touch assist on nearest target
+	local target = getTarget()
+	if target then
+		for i = 1, #toolsCache do
+			local tp = touchParts[toolsCache[i]]
+			if tp and tp.Parent then
 				for _ = 1, TOUCH_ASSIST_BURST do
-					firetouchinterest(touchPart,target,0)
-					firetouchinterest(touchPart,target,1)
+					firetouchinterest(tp, target, 0)
+					firetouchinterest(tp, target, 1)
 				end
+			end
+		end
+		-- 3) remote burst for guaranteed hits
+		for _, rem in pairs(remoteCache) do
+			if rem and rem.Parent then
+				pcall(rem.FireServer, rem, target)
 			end
 		end
 	end
 end
-
-------------------------------------------------------------
--- ACTIVATE
-------------------------------------------------------------
-
-local function activateTools()
-
-	for i = 1,#toolsCache do
-
-		local tool = toolsCache[i]
-
-		if tool and tool.Parent then
-			pcall(tool.Activate,tool)
-		end
-	end
-end
-
-------------------------------------------------------------
--- DAMAGE CORE
-------------------------------------------------------------
-
-local function damagePulse()
-
-	activateTools()
-
-	touchAssist()
-end
-
-------------------------------------------------------------
--- RESPAWN BURST
-------------------------------------------------------------
-
+-- ============ RESPAWN BURST ============
 local function beginBurst()
-
-	if burstActive then
-		return
-	end
-
+	if burstActive then return end
 	burstActive = true
-
 	task.spawn(function()
-
 		local t0 = os.clock()
-
-		-- ⚡ equip instantly
 		equipTools(true)
-
-		-- ⚡ stabilize replication
 		RunService.Heartbeat:Wait()
-
 		while active and os.clock() - t0 < RESPAWN_BURST_TIME do
-
-			equipTools()
+			equipTools(true)
 			damagePulse()
-
 			RunService.Heartbeat:Wait()
 		end
-
 		burstActive = false
 	end)
 end
 
-------------------------------------------------------------
--- MAIN ENGINE
-------------------------------------------------------------
-
-RunService.PreSimulation:Connect(function()
-
-	if not active then
-		return
-	end
-
+-- ============ MAIN ENGINE ============
+RunService.Stepped:Connect(function()
+	if not active then return end
 	local now = os.clock()
-
-	if now - lastPulse < PULSE_INTERVAL then
-		return
-	end
-
+	if now - lastPulse < PULSE_INTERVAL then return end
 	lastPulse = now
-
 	equipTools()
 	damagePulse()
 end)
 
-------------------------------------------------------------
--- RESPAWN
-------------------------------------------------------------
-
+-- ============ RESPAWN ============
 player.CharacterAdded:Connect(function()
-
-	if not active then
-		return
-	end
-
-	beginBurst()
+	if not active then return end
+	task.defer(function()
+		RunService.Heartbeat:Wait()
+		RunService.Heartbeat:Wait()
+		if active then
+			refreshTools()
+			equipTools(true)
+			beginBurst()
+		end
+	end)
 end)
 
-------------------------------------------------------------
--- UI
-------------------------------------------------------------
+if player.Character then bindCharacter(player.Character) end
+player.CharacterAdded:Connect(bindCharacter)
 
+-- ============ UI ============
 local gui = Instance.new("ScreenGui")
 gui.Name = "RTXUseTools"
 gui.ResetOnSpawn = false
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Global
 gui.Parent = game:GetService("CoreGui")
 
-local toggle = Instance.new("TextButton",gui)
-
-toggle.Size = UDim2.fromOffset(180,64)
-toggle.Position = UDim2.fromScale(0.98,0.55)
-toggle.AnchorPoint = Vector2.new(1,0.5)
-
+local toggle = Instance.new("TextButton", gui)
+toggle.Size = UDim2.fromOffset(180, 64)
+toggle.Position = UDim2.fromScale(0.98, 0.55)
+toggle.AnchorPoint = Vector2.new(1, 0.5)
 toggle.Text = "USE TOOLS: OFF"
 toggle.Font = Enum.Font.Code
 toggle.TextSize = 15
-
 toggle.TextColor3 = Theme.Text
 toggle.BackgroundColor3 = Theme.Glass
 toggle.BackgroundTransparency = 0.08
-
 toggle.AutoButtonColor = false
 toggle.Active = true
 toggle.Draggable = true
-
 toggle.ZIndex = 9999
+round(toggle, 16)
+stroke(toggle, 2)
 
-round(toggle,16)
-stroke(toggle,2)
-
-local glow = Instance.new("UIStroke",toggle)
+local glow = Instance.new("UIStroke", toggle)
 glow.Color = Theme.Accent
 glow.Thickness = 2
 glow.Transparency = 0.6
 
-------------------------------------------------------------
--- UI FX
-------------------------------------------------------------
-
 toggle.MouseEnter:Connect(function()
-
-	TweenService:Create(toggle,ANIM,{
-		Size = UDim2.fromOffset(190,70)
-	}):Play()
-
-	TweenService:Create(glow,ANIM,{
-		Transparency = 0.25
-	}):Play()
+	TweenService:Create(toggle, ANIM, { Size = UDim2.fromOffset(190, 70) }):Play()
+	TweenService:Create(glow, ANIM, { Transparency = 0.25 }):Play()
 end)
-
 toggle.MouseLeave:Connect(function()
-
-	TweenService:Create(toggle,ANIM,{
-		Size = UDim2.fromOffset(180,64)
-	}):Play()
-
-	TweenService:Create(glow,ANIM,{
-		Transparency = 0.6
-	}):Play()
+	TweenService:Create(toggle, ANIM, { Size = UDim2.fromOffset(180, 64) }):Play()
+	TweenService:Create(glow, ANIM, { Transparency = 0.6 }):Play()
 end)
-
-------------------------------------------------------------
--- TEXT
-------------------------------------------------------------
 
 local function updateText()
 	toggle.Text = active and "USE TOOLS: ON" or "USE TOOLS: OFF"
 end
 
-------------------------------------------------------------
--- TOGGLE
-------------------------------------------------------------
-
 local function setState(state)
-
 	active = state
-
 	updateText()
-
 	if active then
-
-		-- ⚡ instant equip
 		equipTools(true)
-
-		-- ⚡ stable first pulse
 		task.defer(function()
-
 			RunService.Heartbeat:Wait()
-
 			if active then
 				refreshTools()
 				damagePulse()
 			end
 		end)
-
 	else
-
 		unequipTools()
 	end
 end
 
-------------------------------------------------------------
--- INPUT
-------------------------------------------------------------
-
 toggle.MouseButton1Click:Connect(function()
 	setState(not active)
 end)
-
-UIS.InputBegan:Connect(function(i,g)
-
-	if g then
-		return
-	end
-
-	if i.KeyCode == Enum.KeyCode.E then
-		setState(not active)
-	end
+UIS.InputBegan:Connect(function(i, g)
+	if g then return end
+	if i.KeyCode == TOGGLE_KEY then setState(not active) end
 end)
 
-------------------------------------------------------------
--- INIT
-------------------------------------------------------------
-
 updateText()
-
-print("⚡ RTX Use Tools V5 Loaded")
+print("⚡ RTX Use Tools V7 Loaded (90Hz hyper)")

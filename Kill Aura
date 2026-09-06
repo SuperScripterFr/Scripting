@@ -1,122 +1,174 @@
--- ⚡ FOCUSED AURA V2 (PRECISION LAYER / NO CONFLICT MODE)
+-- ⚡ FOCUSED AURA V3 - PRECISION LAYER / 40Hz / TOOL-CACHED
+-- Shares the global aura target so it stacks with other auras.
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
 
 local LocalPlayer = Players.LocalPlayer
 
---------------------------------------------------
--- CONFIG
---------------------------------------------------
+if getgenv().SPT_Loaded and getgenv().SPT_Loaded["Kill Aura"] then
+	print("⚡ Focused Aura already loaded.")
+	return
+end
+getgenv().SPT_Loaded = getgenv().SPT_Loaded or {}
+getgenv().SPT_Loaded["Kill Aura"] = true
 
-local RANGE = 30
-local TOUCH_BURST = 2
-local AURA_RATE = 1/20 -- slightly lighter, avoids fighting main aura
+-- ============ CONFIG ============
+getgenv().SPT_KillAura = getgenv().SPT_KillAura or {}
+local G = getgenv().SPT_KillAura
 
---------------------------------------------------
--- STATE
---------------------------------------------------
+local RANGE       = typeof(G.Range) == "number" and G.Range or 30
+local TOUCH_BURST = 4
+local AURA_RATE   = 1 / 40
 
+local ACTIVE      = typeof(G.Enabled) == "boolean" and G.Enabled or true
+local TOGGLE_KEY  = Enum.KeyCode.K
+
+-- ============ STATE ============
 local lastAura = 0
+local toolParts = {}       -- list of cached touch parts
 
---------------------------------------------------
--- HELPERS
---------------------------------------------------
+-- ============ UI ============
+local gui = Instance.new("ScreenGui")
+gui.Name = "KillAuraUI"
+gui.ResetOnSpawn = false
+gui.Parent = game:GetService("CoreGui")
 
+local label = Instance.new("TextLabel", gui)
+label.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
+label.BackgroundTransparency = 0.15
+label.Size = UDim2.fromOffset(210, 32)
+label.Position = UDim2.new(0.5, -105, 0.05, 0)
+label.Font = Enum.Font.GothamBold
+label.TextSize = 15
+label.TextColor3 = Color3.fromRGB(255, 80, 80)
+
+local function updateLabel()
+	label.Text = ACTIVE and "⚡ KILL AURA: ON [K]" or "⚡ KILL AURA: OFF [K]"
+end
+updateLabel()
+
+-- ============ TOOL CACHE ============
+local function rebuildToolParts()
+	table.clear(toolParts)
+	local char = LocalPlayer.Character
+	if not char then return end
+	for _, t in ipairs(char:GetChildren()) do
+		if t:IsA("Tool") then
+			local tx = t:FindFirstChildWhichIsA("TouchTransmitter", true)
+			local part = tx and tx.Parent
+			if part and part:IsA("BasePart") then
+				toolParts[#toolParts + 1] = part
+			end
+		end
+	end
+end
+
+local function onToolChange(c)
+	if c:IsA("Tool") then task.defer(rebuildToolParts) end
+end
+
+local function hookChar(char)
+	rebuildToolParts()
+	char.ChildAdded:Connect(onToolChange)
+	char.ChildRemoved:Connect(onToolChange)
+end
+
+if LocalPlayer.Character then hookChar(LocalPlayer.Character) end
+LocalPlayer.CharacterAdded:Connect(hookChar)
+
+-- ============ TARGET ============
 local function getHRP(char)
 	return char and char:FindFirstChild("HumanoidRootPart")
 end
 
---------------------------------------------------
--- SHARED TARGET (IMPORTANT FIX)
--- instead of re-computing, we *prefer external target*
---------------------------------------------------
-
 local function getTarget()
-	-- 🔥 PRIORITY: use shared aura target if exists
-	if _G.CurrentAuraTarget then
-		return _G.CurrentAuraTarget
+	-- prefer the shared aura lock (set by Insta-Kill / others)
+	local shared = _G.CurrentAuraTarget
+	if shared then
+		local hum = shared:FindFirstChildOfClass("Humanoid")
+		local r = shared:FindFirstChild("HumanoidRootPart")
+		if hum and r and hum.Health > 0 then
+			return shared
+		end
 	end
 
-	-- fallback
-	local myChar = LocalPlayer.Character
-	local myRoot = getHRP(myChar)
-	if not myRoot then return end
+	local myRoot = getHRP(LocalPlayer.Character)
+	if not myRoot then return nil end
+	local myPos = myRoot.Position
 
-	local bestChar
-	local bestDist = RANGE
-
+	local bestChar, bestSq = nil, RANGE * RANGE
 	for _, p in ipairs(Players:GetPlayers()) do
 		if p ~= LocalPlayer then
 			local r = getHRP(p.Character)
 			if r then
-				local dist = (r.Position - myRoot.Position).Magnitude
-				if dist < bestDist then
-					bestDist = dist
+				local dx, dy, dz = r.Position.X - myPos.X, r.Position.Y - myPos.Y, r.Position.Z - myPos.Z
+				local dsq = dx * dx + dy * dy + dz * dz
+				if dsq < bestSq then
+					bestSq = dsq
 					bestChar = p.Character
 				end
 			end
 		end
 	end
-
 	return bestChar
 end
 
---------------------------------------------------
--- TOUCH FUNCTION (UNCHANGED BUT CLEANER)
---------------------------------------------------
-
-local function tap(toolPart, enemyPart)
+-- ============ ATTACK ============
+local function tap(part, enemyPart)
 	for _ = 1, TOUCH_BURST do
-		firetouchinterest(toolPart, enemyPart, 0)
-		firetouchinterest(toolPart, enemyPart, 1)
+		firetouchinterest(part, enemyPart, 0)
+		firetouchinterest(part, enemyPart, 1)
 	end
 end
 
---------------------------------------------------
--- MAIN LOOP (NO HEARTBEAT DESYNC)
---------------------------------------------------
+local function partsFor(char)
+	local p = {}
+	if type(_G.GetExpandedParts) == "function" then
+		pcall(function()
+			p = _G.GetExpandedParts(char)
+		end)
+	end
+	if not p or #p == 0 then
+		p = {}
+		local hrp = getHRP(char)
+		local head = char:FindFirstChild("Head")
+		if hrp then p[#p + 1] = hrp end
+		if head and head:IsA("BasePart") then p[#p + 1] = head end
+	end
+	return p
+end
 
-RunService.Heartbeat:Connect(function()
-
+-- ============ ENGINE ============
+RunService.Stepped:Connect(function()
+	if not ACTIVE then return end
 	local now = os.clock()
 	if now - lastAura < AURA_RATE then return end
 	lastAura = now
 
-	local char = LocalPlayer.Character
-	if not char then return end
+	local target = getTarget()
+	if not target then return end
 
-	local targetChar = getTarget()
-	if not targetChar then return end
-
-	-- optional expanded hitbox support (safe)
-	local partsToHit
-
-	if _G.GetExpandedParts then
-		partsToHit = _G.GetExpandedParts(targetChar)
-	end
-
-	if not partsToHit or #partsToHit == 0 then
-		local hrp = getHRP(targetChar)
-		if not hrp then return end
-		partsToHit = {hrp}
-	end
-
-	-- 🔥 NO FRAME YIELD INSIDE LOOP (FIXED)
-	for _, tool in ipairs(char:GetChildren()) do
-		if tool:IsA("Tool") then
-
-			local touch = tool:FindFirstChildWhichIsA("TouchTransmitter", true)
-			local part = touch and touch.Parent
-
-			if part then
-				for _, enemyPart in ipairs(partsToHit) do
-					tap(part, enemyPart)
-				end
+	local partsToHit = partsFor(target)
+	for i = 1, #toolParts do
+		local part = toolParts[i]
+		if part and part.Parent then
+			for j = 1, #partsToHit do
+				tap(part, partsToHit[j])
 			end
 		end
 	end
-
 end)
 
-print("⚡ Focused Aura V2 Loaded (Precision Layer)")
+-- ============ TOGGLE ============
+UIS.InputBegan:Connect(function(input, gpe)
+	if gpe then return end
+	if input.KeyCode == TOGGLE_KEY then
+		ACTIVE = not ACTIVE
+		getgenv().SPT_KillAura.Enabled = ACTIVE
+		updateLabel()
+	end
+end)
+
+print("⚡ Focused Aura V3 Loaded (precision layer)")

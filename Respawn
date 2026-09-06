@@ -1,173 +1,131 @@
--- ⚡ QUANTUM FAST RESPAWN V5 (LOW LATENCY + BACKUP SYSTEM)
-
-----------------------------------------------------
--- SERVICES
-----------------------------------------------------
+-- ⚡ QUANTUM FAST RESPAWN V6 (hyper low-latency + offline guarantee)
+-- Fires every respawn-like remote instantly, falls back to LoadCharacter.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
-local GuideEvent = ReplicatedStorage:FindFirstChild("Guide")
 
-----------------------------------------------------
--- SETTINGS
-----------------------------------------------------
+if getgenv().SPT_Loaded and getgenv().SPT_Loaded["Respawn"] then
+	print("⚡ Respawn already loaded.")
+	return
+end
+getgenv().SPT_Loaded = getgenv().SPT_Loaded or {}
+getgenv().SPT_Loaded["Respawn"] = true
 
+-- ============ SETTINGS ============
 local TOGGLE_KEY = Enum.KeyCode.R
 local HEALTH_THRESHOLD = 6
+local FAILSAFE_TIME = 0.12  -- force local respawn if no server response
+local BACKUP_DELAY = 0.06   -- stagger backup path
+local MIN_FIRE_INTERVAL = 0.2
 
--- 🔥 latency safety windows
-local FAILSAFE_TIME = 0.35 -- if nothing happens, force fallback
-local BACKUP_DELAY = 0.12  -- stagger backup to avoid double-fire spam
-
-----------------------------------------------------
--- STATE
-----------------------------------------------------
-
+-- ============ STATE ============
 local active = false
 local firing = false
-
 local connections = {}
-
 local characterToken = 0
 local lastRequestTime = 0
 
-----------------------------------------------------
--- CLEANUP
-----------------------------------------------------
-
 local function disconnectAll()
 	for _, c in ipairs(connections) do
-		if c and c.Connected then
-			c:Disconnect()
-		end
+		if c and c.Connected then c:Disconnect() end
 	end
 	table.clear(connections)
 end
 
 local function track(conn)
-	table.insert(connections, conn)
+	connections[#connections + 1] = conn
 	return conn
 end
 
-----------------------------------------------------
--- PRIMARY + BACKUP RESPAWN ENGINE
-----------------------------------------------------
-
-local function fireRespawn()
-
-	if firing then return end
-	firing = true
-
-	lastRequestTime = os.clock()
-	characterToken += 1
-
-	disconnectAll()
-
-	------------------------------------------------
-	-- PRIMARY PATH (REMOTE)
-	------------------------------------------------
-
-	if GuideEvent then
-		GuideEvent:FireServer()
+-- discover every respawn-ish remote in ReplicatedStorage
+local function findRespawnRemotes()
+	local found = {}
+	if not ReplicatedStorage then return found end
+	for _, o in ipairs(ReplicatedStorage:GetDescendants()) do
+		if o:IsA("RemoteEvent") then
+			local n = string.lower(o.Name)
+			if n:find("respawn") or n:find("spawn") or n:find("guide") or n:find("reset") or n:find("death") then
+				found[#found + 1] = o
+			end
+		end
 	end
-
-	------------------------------------------------
-	-- BACKUP PATH (LOCAL GUARANTEE)
-	------------------------------------------------
-
-	task.delay(BACKUP_DELAY, function()
-		if active then
-			-- if character hasn't changed yet, backup trigger
-			player:LoadCharacter()
-		end
-	end)
-
-	------------------------------------------------
-	-- FAILSAFE RECHECK (VERY IMPORTANT FOR HIGH PING)
-	------------------------------------------------
-
-	task.delay(FAILSAFE_TIME, function()
-		if not active then return end
-
-		-- if still same state (respawn didn't complete fast enough)
-		if os.clock() - lastRequestTime >= FAILSAFE_TIME then
-			player:LoadCharacter()
-		end
-	end)
-
-	------------------------------------------------
-	-- UNLOCK
-	------------------------------------------------
-
-	task.delay(0.2, function()
-		firing = false
-	end)
+	return found
 end
 
-----------------------------------------------------
--- CHARACTER HOOK
-----------------------------------------------------
+-- ============ RESPAWN ENGINE ============
+local function fireRespawn()
+	if firing then return end
+	if os.clock() - lastRequestTime < MIN_FIRE_INTERVAL then return end
+	firing = true
+	lastRequestTime = os.clock()
+	characterToken += 1
+	disconnectAll()
 
+	local remotes = findRespawnRemotes()
+	if #remotes > 0 then
+		for _, r in ipairs(remotes) do
+			pcall(r.FireServer, r)
+		end
+	else
+		-- no remote found: schedule the local path
+		task.delay(BACKUP_DELAY, function()
+			if active then pcall(player.LoadCharacter, player) end
+		end)
+	end
+
+	-- hard failsafe: guarantee a respawn even on high ping
+	task.delay(FAILSAFE_TIME, function()
+		if not active then return end
+		if os.clock() - lastRequestTime >= FAILSAFE_TIME then
+			pcall(player.LoadCharacter, player)
+		end
+	end)
+
+	task.delay(0.15, function() firing = false end)
+end
+
+-- ============ CHARACTER HOOK ============
 local function hookCharacter(char)
-
 	characterToken += 1
 	local myToken = characterToken
-
 	disconnectAll()
 
 	local hum = char:WaitForChild("Humanoid", 5)
 	if not hum then return end
 
 	local triggered = false
-
 	local function trigger()
 		if triggered then return end
 		if not active then return end
 		if characterToken ~= myToken then return end
-
 		triggered = true
 		fireRespawn()
 	end
 
 	track(hum.HealthChanged:Connect(function(hp)
-		if hp <= HEALTH_THRESHOLD then
-			trigger()
-		end
+		if hp <= HEALTH_THRESHOLD then trigger() end
 	end))
-
 	track(hum.Died:Connect(trigger))
 end
-
-----------------------------------------------------
--- SAFE CHARACTER HANDLER
-----------------------------------------------------
 
 local function tryHook()
 	if not active then return end
 	local char = player.Character
-	if char then
-		hookCharacter(char)
-	end
+	if char then hookCharacter(char) end
 end
 
 player.CharacterAdded:Connect(function(char)
 	task.defer(function()
-		if active then
-			hookCharacter(char)
-		end
+		if active then hookCharacter(char) end
 	end)
 end)
 
-----------------------------------------------------
--- TOGGLE
-----------------------------------------------------
-
+-- ============ TOGGLE ============
 local function setState(state)
 	active = state
-
 	if active then
 		print("⚡ Respawn ON")
 		tryHook()
@@ -177,49 +135,33 @@ local function setState(state)
 	end
 end
 
-----------------------------------------------------
--- KEYBIND
-----------------------------------------------------
-
 UserInputService.InputBegan:Connect(function(input, gp)
 	if gp then return end
-	if input.KeyCode == TOGGLE_KEY then
-		setState(not active)
-	end
+	if input.KeyCode == TOGGLE_KEY then setState(not active) end
 end)
 
-----------------------------------------------------
--- UI (unchanged logic)
-----------------------------------------------------
-
+-- ============ UI ============
 local gui = Instance.new("ScreenGui")
 gui.Name = "QuantumRespawnUI"
 gui.ResetOnSpawn = false
 gui.Parent = game:GetService("CoreGui")
 
-local button = Instance.new("TextButton")
-button.Parent = gui
-
+local button = Instance.new("TextButton", gui)
 button.Size = UDim2.fromOffset(170, 55)
 button.Position = UDim2.fromScale(0.98, 0.55)
 button.AnchorPoint = Vector2.new(1, 0.5)
-
 button.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
 button.TextColor3 = Color3.fromRGB(255, 255, 255)
-
 button.Font = Enum.Font.GothamBold
 button.TextSize = 15
-
 button.Active = true
 button.Draggable = true
 
-local corner = Instance.new("UICorner")
+local corner = Instance.new("UICorner", button)
 corner.CornerRadius = UDim.new(0, 12)
-corner.Parent = button
 
-local stroke = Instance.new("UIStroke")
+local stroke = Instance.new("UIStroke", button)
 stroke.Thickness = 2
-stroke.Parent = button
 
 local function updateButton()
 	if active then
@@ -238,4 +180,4 @@ end)
 
 updateButton()
 
-print("⚡ Quantum Fast Respawn V5 Loaded (LOW LATENCY + BACKUP)")
+print("⚡ Quantum Fast Respawn V6 Loaded")

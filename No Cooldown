@@ -1,123 +1,192 @@
--- ⚡ No Cooldown V6(7) (Cooldown Breaker + Combat Loop)
+-- ⚡ No Cooldown V8 - COOLDOWN REAPER (wait-hook + hyper combat loop)
+-- Faster scan, multi-remote bypass, touch burst, instant re-equip reset.
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
 
---================================================
--- ⚡ GLOBAL COOLDOWN BREAKER (Original Power)
---================================================
+if getgenv().SPT_Loaded and getgenv().SPT_Loaded["No Cooldown"] then
+	print("⚡ No Cooldown already loaded.")
+	return
+end
+getgenv().SPT_Loaded = getgenv().SPT_Loaded or {}
+getgenv().SPT_Loaded["No Cooldown"] = true
 
--- Use 'Stepped' for efficient timing
-local stepped = RunService.Stepped
+-- ============ CONFIG ============
+getgenv().SPT_NoCooldown = getgenv().SPT_NoCooldown or {}
+local G = getgenv().SPT_NoCooldown
 
--- Function to override 'wait'
-local hookWait
-hookWait = hookfunction(wait, function()
-    stepped:Wait()
-    return nil
-end)
+local RANGE         = typeof(G.Range) == "number" and G.Range or 30
+local RANGE_SQ      = RANGE * RANGE
+local PULSE_RATE    = 1 / 120
+local SCAN_RATE     = 1 / 12
+local TOUCH_BURST   = 3
+local MAX_REMOTES   = 3
+local RE_EQUIP      = true
 
---================================================
--- CHARACTER + TOOL TRACKING
---================================================
+-- ============ GLOBAL COOLDOWN BREAKER (idempotent) ============
+if not getgenv()._SPT_CoolHook then
+	getgenv()._SPT_CoolHook = true
+	pcall(function()
+		hookfunction(wait, function()
+			RunService.Stepped:Wait()
+			return nil
+		end)
+	end)
+end
 
+-- ============ STATE ============
 local Character
-local FightEvent
+local remotes = {}     -- flat remote list
+local touchParts = {}  -- tool -> touch part
+local toolsInHand = {}
 
-local function setupTool(tool)
-
-	local remote = tool:FindFirstChild("FightEvent")
-
-	if remote then
-		FightEvent = remote
+local function findRemotes(tool)
+	local r = tool:FindFirstChild("FightEvent")
+	if r then return { r } end
+	local found = {}
+	for _, o in ipairs(tool:GetDescendants()) do
+		if o:IsA("RemoteEvent") then
+			local n = string.lower(o.Name)
+			if n:find("fight") or n:find("slap") or n:find("event") then
+				found[#found + 1] = o
+			end
+		end
 	end
+	return found
+end
 
+local function rebuild()
+	table.clear(remotes)
+	table.clear(touchParts)
+	table.clear(toolsInHand)
+	if not Character then return end
+	for _, t in ipairs(Character:GetChildren()) do
+		if t:IsA("Tool") then
+			toolsInHand[#toolsInHand + 1] = t
+			for _, r in ipairs(findRemotes(t)) do
+				remotes[#remotes + 1] = r
+			end
+			local tx = t:FindFirstChildWhichIsA("TouchTransmitter", true)
+			local tp = tx and tx.Parent
+			if tp and tp:IsA("BasePart") then touchParts[t] = tp end
+		end
+	end
 end
 
 local function hookCharacter(char)
-
 	Character = char
-	FightEvent = nil
-
-	for _,v in ipairs(char:GetChildren()) do
-		if v:IsA("Tool") then
-			setupTool(v)
-		end
-	end
-
-	char.ChildAdded:Connect(function(child)
-		if child:IsA("Tool") then
-			setupTool(child)
-		end
+	rebuild()
+	char.ChildAdded:Connect(function(c)
+		if c:IsA("Tool") then task.defer(rebuild) end
 	end)
-
+	char.ChildRemoved:Connect(function(c)
+		if c:IsA("Tool") then task.defer(rebuild) end
+	end)
 end
 
-if LocalPlayer.Character then
-	hookCharacter(LocalPlayer.Character)
-end
-
+if LocalPlayer.Character then hookCharacter(LocalPlayer.Character) end
 LocalPlayer.CharacterAdded:Connect(hookCharacter)
 
---================================================
--- ⚡ ULTRA COMBAT LOOP (OPTIMIZED)
---================================================
-
-local RANGE = 20
-local RANGE_SQ = RANGE * RANGE
-
-local enemyCache = {}
-local lastScan = 0
-local SCAN_RATE = 0.35
-
-local function updateEnemyCache()
-
-	table.clear(enemyCache)
-
-	for _,player in ipairs(Players:GetPlayers()) do
-		if player ~= LocalPlayer then
-			table.insert(enemyCache, player)
-		end
+local function hookBackpack()
+	local bp = LocalPlayer:FindFirstChildOfClass("Backpack")
+	if bp then
+		bp.ChildAdded:Connect(function(c)
+			if c:IsA("Tool") then task.defer(rebuild) end
+		end)
 	end
-
 end
+LocalPlayer.ChildAdded:Connect(function(c)
+	if c:IsA("Backpack") then hookBackpack() end
+end)
+hookBackpack()
 
-RunService.Heartbeat:Connect(function()
+-- ============ COMBAT ENGINE ============
+local enemies = {}
+local lastScan, lastPulse = 0, 0
+local equipCounter = 0
 
+RunService.Stepped:Connect(function()
 	if not Character then return end
-	if not FightEvent then return end
-
 	local hrp = Character:FindFirstChild("HumanoidRootPart")
 	if not hrp then return end
 
-	-- update player cache occasionally
-	if tick() - lastScan > SCAN_RATE then
-		lastScan = tick()
-		updateEnemyCache()
+	local now = os.clock()
+
+	-- refresh enemy list periodically (cheap, squared distance)
+	if now - lastScan > SCAN_RATE then
+		lastScan = now
+		table.clear(enemies)
+		local myPos = hrp.Position
+		for _, plr in ipairs(Players:GetPlayers()) do
+			if plr ~= LocalPlayer then
+				local char = plr.Character
+				if char then
+					local r = char:FindFirstChild("HumanoidRootPart")
+					local hum = char:FindFirstChildOfClass("Humanoid")
+					if r and hum and hum.Health > 0 then
+						local dx, dy, dz = r.Position.X - myPos.X, r.Position.Y - myPos.Y, r.Position.Z - myPos.Z
+						if dx * dx + dy * dy + dz * dz <= RANGE_SQ then
+							enemies[#enemies + 1] = { r = r, char = char }
+						end
+					end
+				end
+			end
+		end
 	end
 
-	local myPos = hrp.Position
+	if now - lastPulse < PULSE_RATE then return end
+	lastPulse = now
 
-	for i = 1, #enemyCache do
+	if #enemies == 0 then return end
+	if #remotes == 0 and not next(touchParts) then return end
 
-		local player = enemyCache[i]
-		local char = player.Character
-		if not char then continue end
+	for i = 1, #enemies do
+		local root = enemies[i].r
+		local head = enemies[i].char:FindFirstChild("Head")
 
-		local enemyHRP = char:FindFirstChild("HumanoidRootPart")
-		if not enemyHRP then continue end
-
-		local diff = myPos - enemyHRP.Position
-
-		-- squared distance check (WAY faster)
-		if diff:Dot(diff) <= RANGE_SQ then
-			FightEvent:FireServer(enemyHRP)
+		-- touch burst on HRP + Head
+		for _, tp in pairs(touchParts) do
+			if tp and tp.Parent then
+				for _ = 1, TOUCH_BURST do
+					firetouchinterest(tp, root, 0)
+					firetouchinterest(tp, root, 1)
+					if head then
+						firetouchinterest(tp, head, 0)
+						firetouchinterest(tp, head, 1)
+					end
+				end
+			end
 		end
 
+		-- multi-remote cooldown bypass
+		local fired = 0
+		for j = 1, #remotes do
+			if fired >= MAX_REMOTES then break end
+			local r = remotes[j]
+			if r and r.Parent then
+				pcall(r.FireServer, r, root)
+				fired += 1
+			end
+		end
 	end
 
+	-- periodic instant re-equip resets in-hand ability cooldowns
+	equipCounter += 1
+	if RE_EQUIP and equipCounter >= 45 then
+		equipCounter = 0
+		local bp = LocalPlayer:FindFirstChildOfClass("Backpack")
+		if bp and #toolsInHand > 0 then
+			local tool = toolsInHand[1]
+			if tool and tool.Parent == Character then
+				pcall(function() tool.Parent = bp end)
+				task.defer(function()
+					if tool then pcall(function() tool.Parent = Character end) end
+				end)
+			end
+		end
+	end
 end)
 
-print("⚡ No Cooldown V6(7) Running")
+print("⚡ No Cooldown V8 Running")

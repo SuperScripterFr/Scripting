@@ -50,6 +50,16 @@ local TOUCH_ASSIST_RANGE   = 16
 local TOUCH_ASSIST_BURST   = 2
 local TOGGLE_KEY           = Enum.KeyCode.E
 
+-- cosmetic fan slots for the local-only stabilizer welds (never replicated to the server)
+local HAND_OFFSETS = {
+	CFrame.new(0.62, 0.85, -0.55),
+	CFrame.new(-0.62, 0.85, -0.55),
+	CFrame.new(0.58, 0.35, -0.15),
+	CFrame.new(-0.58, 0.35, -0.15),
+	CFrame.new(0, 0.95, -0.95),
+	CFrame.new(0, 0.42, -0.95),
+}
+
 -- ============ STATE ============
 local active = false
 local toolsCache = {}
@@ -66,6 +76,7 @@ local burstActive = false
 
 local lastTargetScan = 0
 local cachedTarget
+local wantedTools = {}   -- every Tool we intend to keep equipped (for re-capture)
 
 -- ============ TOOL CACHE ============
 local function refreshTools()
@@ -111,11 +122,16 @@ local function equipTools(force)
 	if not char or not bp then return end
 
 	local changed = false
+	table.clear(wantedTools)
 	for _, tool in ipairs(bp:GetChildren()) do
 		if tool:IsA("Tool") then
 			tool.Parent = char
 			changed = true
+			wantedTools[#wantedTools + 1] = tool
 		end
+	end
+	for _, tool in ipairs(char:GetChildren()) do
+		if tool:IsA("Tool") then wantedTools[#wantedTools + 1] = tool end
 	end
 	if changed then refreshTools() end
 end
@@ -127,9 +143,70 @@ local function unequipTools()
 	for _, tool in ipairs(char:GetChildren()) do
 		if tool:IsA("Tool") then tool.Parent = bp end
 	end
+	clearStabilizers()
 	table.clear(toolsCache)
 	table.clear(touchParts)
 	table.clear(remoteCache)
+	table.clear(wantedTools)
+end
+
+-- ============ HANDLE STABILIZER (keeps every tool visually welded) ============
+local function getToolHandle(tool)
+	if not tool then return nil end
+	return tool:FindFirstChild("Handle") or tool:FindFirstChildWhichIsA("BasePart")
+end
+
+local function clearStabilizers()
+	for i = 1, #toolsCache do
+		local h = getToolHandle(toolsCache[i])
+		local w = h and h:FindFirstChild("SPTStabilizer")
+		if w then w:Destroy() end
+	end
+end
+
+-- if the engine fully drops a tool into the workspace, bring it back into the rig
+local function recaptureDropped()
+	local char = currentCharacter
+	if not char then return end
+	local bp = player:FindFirstChildOfClass("Backpack")
+	for i = 1, #wantedTools do
+		local tool = wantedTools[i]
+		if tool and tool.Parent and tool.Parent ~= char and tool.Parent ~= bp then
+			pcall(function() tool.Parent = char end)
+		end
+	end
+end
+
+-- weld every handle to the HumanoidRootPart so the client always renders them in-hand
+local function stabilizeHandles()
+	local root = currentRoot
+	if not root or not root.Parent then return end
+	for i = 1, #toolsCache do
+		local tool = toolsCache[i]
+		if tool and tool.Parent then
+			local handle = getToolHandle(tool)
+			if handle and not handle.Anchored then
+				handle.CanCollide = false
+				handle.Massless = true
+				local w = handle:FindFirstChild("SPTStabilizer")
+				if not w then
+					local rel = root.CFrame:ToObjectSpace(handle.CFrame)
+					local c0 = HAND_OFFSETS[(i - 1) % #HAND_OFFSETS + 1]
+					if rel.Position.Magnitude < 4 then c0 = rel end  -- keep natural hand pose if still in-hand
+					w = Instance.new("Weld")
+					w.Name = "SPTStabilizer"
+					w.Part0 = root
+					w.Part1 = handle
+					w.C0 = c0
+					w.C1 = CFrame.new()
+					w.Parent = handle
+				elseif w.Part0 ~= root or w.Part1 ~= handle then
+					w.Part0 = root
+					w.Part1 = handle
+				end
+			end
+		end
+	end
 end
 
 -- ============ TARGET (cached every 100ms) ============
@@ -196,9 +273,12 @@ local function beginBurst()
 	task.spawn(function()
 		local t0 = os.clock()
 		equipTools(true)
+		stabilizeHandles()
 		RunService.Heartbeat:Wait()
 		while active and os.clock() - t0 < RESPAWN_BURST_TIME do
 			equipTools(true)
+			recaptureDropped()
+			stabilizeHandles()
 			damagePulse()
 			RunService.Heartbeat:Wait()
 		end
@@ -213,6 +293,8 @@ RunService.Stepped:Connect(function()
 	if now - lastPulse < PULSE_INTERVAL then return end
 	lastPulse = now
 	equipTools()
+	recaptureDropped()
+	stabilizeHandles()
 	damagePulse()
 end)
 
@@ -225,6 +307,8 @@ player.CharacterAdded:Connect(function()
 		if active then
 			refreshTools()
 			equipTools(true)
+			recaptureDropped()
+			stabilizeHandles()
 			beginBurst()
 		end
 	end)
@@ -284,6 +368,8 @@ local function setState(state)
 			RunService.Heartbeat:Wait()
 			if active then
 				refreshTools()
+				recaptureDropped()
+				stabilizeHandles()
 				damagePulse()
 			end
 		end)

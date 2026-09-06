@@ -1,390 +1,908 @@
--- ============================================================
--- ⚡ USE TOOLS V7 - 90Hz hyper pulse, all tools, cached touch parts
--- ============================================================
+-- TFL Use Tools
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local UIS = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
 
-local player = Players.LocalPlayer
+local LocalPlayer = Players.LocalPlayer
 
--- ============ RE-RUN GUARD ============
-if getgenv().SPT_Loaded and getgenv().SPT_Loaded["Use Tools"] then
-	print("⚡ Use Tools already loaded.")
-	return
-end
-getgenv().SPT_Loaded = getgenv().SPT_Loaded or {}
-getgenv().SPT_Loaded["Use Tools"] = true
-
--- ============ THEME ============
-local Theme = {
-	Accent = Color3.fromRGB(0, 0, 0),
-	Glass  = Color3.fromRGB(100, 0, 0),
-	Text   = Color3.fromRGB(255, 0, 0),
-	Stroke = Color3.fromRGB(255, 0, 0),
+-- TFL Theme (Black/Green Hacker Aesthetic)
+local THEME = {
+	Background = Color3.fromRGB(0, 0, 0),
+	Panel = Color3.fromRGB(0, 15, 0),
+	Button = Color3.fromRGB(0, 25, 0),
+	Text = Color3.fromRGB(0, 255, 0),
+	On = Color3.fromRGB(0, 40, 0),
+	Accent = Color3.fromRGB(0, 255, 0),
 }
 
-local ANIM = TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+-- Configuration (10 - 1000 APS, 1 - 10 Tools)
+local APS = 80
+local MAX_TOOLS = 5
+local TOUCH_ASSIST_RANGE = 14
 
-local function round(i, r)
-	local c = Instance.new("UICorner")
-	c.CornerRadius = UDim.new(0, r or 14)
-	c.Parent = i
-end
+-- Modes: "Normal" (Activate only), "Event" (FightEvent only), "Max" (Both with fixed 10 APS)
+local Mode = "Normal"
+local Active = false
 
-local function stroke(i, thick)
-	local s = Instance.new("UIStroke")
-	s.Color = Theme.Stroke
-	s.Thickness = thick or 4
-	s.Parent = i
-end
+-- State - cached references for performance
+local ToolsCache = {}
+local ToolWelds = {}
+local CurrentCharacter = nil
+local CurrentRoot = nil
+local LastPulse = 0
+local CharacterConnections = {}
+local ReequipToken = 0
 
--- ============ CONFIG ============
-getgenv().SPT_UseTools = getgenv().SPT_UseTools or {}
-local G = getgenv().SPT_UseTools
+-- Pre-allocated tables to reduce GC pressure
+local TargetPartsBuffer = {}
+local TempToolsBuffer = {}
 
-local APS                  = typeof(G.APS) == "number" and G.APS or 90
-local PULSE_INTERVAL       = 1 / APS
-local RESPAWN_BURST_TIME   = 2.0
-local TOUCH_ASSIST_RANGE   = 16
-local TOUCH_ASSIST_BURST   = 2
-local TOGGLE_KEY           = Enum.KeyCode.E
-
--- cosmetic fan slots for the local-only stabilizer welds (never replicated to the server)
-local HAND_OFFSETS = {
-	CFrame.new(0.62, 0.85, -0.55),
-	CFrame.new(-0.62, 0.85, -0.55),
-	CFrame.new(0.58, 0.35, -0.15),
-	CFrame.new(-0.58, 0.35, -0.15),
-	CFrame.new(0, 0.95, -0.95),
-	CFrame.new(0, 0.42, -0.95),
+-- Configuration globals for external modification
+_G.TFL_UseTools = {
+	APS = APS,
+	MaxTools = MAX_TOOLS,
+	Mode = Mode,
+	SetAPS = function(value)
+		APS = math.clamp(value, 10, 1000)
+		_G.TFL_UseTools.APS = APS
+	end,
+	SetMaxTools = function(value)
+		MAX_TOOLS = math.clamp(value, 1, 10)
+		_G.TFL_UseTools.MaxTools = MAX_TOOLS
+	end,
+	SetMode = function(mode)
+		if mode == "Normal" or mode == "Event" or mode == "Max" then
+			Mode = mode
+			_G.TFL_UseTools.Mode = mode
+		end
+	end,
 }
 
--- ============ STATE ============
-local active = false
-local toolsCache = {}
-local touchParts = {}    -- tool -> touch part
-local remoteCache = {}   -- tool -> FightEvent remote
+-- Cleanup
+if _G.__TFLUseToolsCleanup then
+	pcall(_G.__TFLUseToolsCleanup)
+end
 
-local currentCharacter
-local currentRoot
+local Connections = {}
 
-local lastPulse = 0
-local lastEquipCheck = 0
-local EQUIP_INTERVAL = 1 / 20
-local burstActive = false
+local function track(conn)
+	table.insert(Connections, conn)
+	return conn
+end
 
-local lastTargetScan = 0
-local cachedTarget
-local wantedTools = {}   -- every Tool we intend to keep equipped (for re-capture)
+local function cleanup()
+	for _, conn in ipairs(Connections) do
+		if conn and conn.Connected then
+			conn:Disconnect()
+		end
+	end
+	table.clear(Connections)
+	
+	for _, conn in ipairs(CharacterConnections) do
+		if conn and conn.Connected then
+			conn:Disconnect()
+		end
+	end
+	table.clear(CharacterConnections)
+	
+	-- Clean up Motor6D welds
+	for _, weld in pairs(ToolWelds) do
+		if weld and weld.Parent then
+			weld:Destroy()
+		end
+	end
+	table.clear(ToolWelds)
+	
+	table.clear(ToolsCache)
+	CurrentCharacter = nil
+	CurrentRoot = nil
+	Active = false
+end
 
--- ============ TOOL CACHE ============
-local function refreshTools()
-	table.clear(toolsCache)
-	table.clear(touchParts)
-	table.clear(remoteCache)
-	local char = currentCharacter
-	if not char then return end
-	for _, o in ipairs(char:GetChildren()) do
-		if o:IsA("Tool") then
-			toolsCache[#toolsCache + 1] = o
-			local tx = o:FindFirstChildWhichIsA("TouchTransmitter", true)
-			local part = tx and tx.Parent
-			if part and part:IsA("BasePart") then touchParts[o] = part end
-			local rem = o:FindFirstChild("FightEvent")
-			if rem then remoteCache[o] = rem end
+_G.__TFLUseToolsCleanup = cleanup
+
+-- Helper functions - cached for performance
+local function getHRP(char)
+	return char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso"))
+end
+
+local function getRightHand(char)
+	return char and (char:FindFirstChild("RightHand") or char:FindFirstChild("Right Arm"))
+end
+
+local function getLeftHand(char)
+	return char and (char:FindFirstChild("LeftHand") or char:FindFirstChild("Left Arm"))
+end
+
+-- Get tool touch part - optimized
+local function getToolTouchPart(tool)
+	local handle = tool:FindFirstChild("Handle")
+	if handle and handle:IsA("BasePart") then
+		return handle
+	end
+	-- Fast path: check for TouchTransmitter in tool
+	for _, obj in ipairs(tool:GetDescendants()) do
+		if obj:IsA("TouchTransmitter") and obj.Parent and obj.Parent:IsA("BasePart") then
+			return obj.Parent
+		end
+	end
+	return nil
+end
+
+-- Motor6D Weld System - Prevent tools from falling locally
+local function removeToolWeld(tool)
+	local weld = ToolWelds[tool]
+	if weld then
+		if weld.Parent then
+			weld:Destroy()
+		end
+		ToolWelds[tool] = nil
+	end
+end
+
+-- Apply visual welds to keep all tools attached to hands
+-- OPTIMIZED: Natural grip positioning - tools appear as if being held normally
+-- Uses the tool's original Grip and GripPos for proper positioning
+local function applyToolWelds()
+	if not CurrentCharacter or not Active then return end
+	
+	local char = CurrentCharacter
+	local rightHand = getRightHand(char)
+	local leftHand = getLeftHand(char)
+	
+	if not rightHand or not leftHand then return end
+	
+	-- Separate tools into RightHand and LeftHand groups
+	local rightHandTools = {}
+	local leftHandTools = {}
+	
+	for _, tool in ipairs(ToolsCache) do
+		local handle = tool and tool:FindFirstChild("Handle")
+		if handle and handle:IsA("BasePart") then
+			-- Axe goes to LeftHand for better separation, others to RightHand
+			if tool.Name and tool.Name:lower():find("axe") then
+				table.insert(leftHandTools, tool)
+			else
+				table.insert(rightHandTools, tool)
+			end
+		end
+	end
+	
+	-- Weld RightHand tools with natural grip positioning
+	-- Use the tool's original Grip and GripPos for proper positioning
+	for i, tool in ipairs(rightHandTools) do
+		local handle = tool:FindFirstChild("Handle")
+		if handle then
+			removeToolWeld(tool)
+			
+			local weld = Instance.new("Motor6D")
+			weld.Name = "TFL_ToolWeld"
+			weld.Part0 = handle
+			weld.Part1 = rightHand
+			
+			-- C0: Position relative to handle (inverse of GripPos)
+			weld.C0 = CFrame.new(-tool.GripPos.X, -tool.GripPos.Y, -tool.GripPos.Z)
+			
+			-- C1: Position relative to hand
+			-- Use the tool's original Grip for natural positioning
+			-- Apply small angular offset to make multiple tools visible
+			local angleOffset = (i - 1) * 0.3
+			weld.C1 = tool.Grip * CFrame.fromAxisAngle(Vector3.new(0, 1, 0), angleOffset)
+			
+			weld.Parent = handle
+			ToolWelds[tool] = weld
+			
+			-- Prevent handle from colliding with world and interfering with character movement
+			if not handle:GetAttribute("TFL_WasCanCollide") then
+				handle:SetAttribute("TFL_WasCanCollide", handle.CanCollide)
+			end
+			handle.CanCollide = false
+			handle.Massless = true
+			-- IMPORTANT: Keep CanTouch enabled for touch events to work!
+		end
+	end
+	
+	-- Weld LeftHand tools (typically just Axe)
+	for i, tool in ipairs(leftHandTools) do
+		local handle = tool:FindFirstChild("Handle")
+		if handle then
+			removeToolWeld(tool)
+			
+			local weld = Instance.new("Motor6D")
+			weld.Name = "TFL_ToolWeld"
+			weld.Part0 = handle
+			weld.Part1 = leftHand
+			
+			weld.C0 = CFrame.new(-tool.GripPos.X, -tool.GripPos.Y, -tool.GripPos.Z)
+			weld.C1 = tool.Grip
+			
+			weld.Parent = handle
+			ToolWelds[tool] = weld
+			
+			if not handle:GetAttribute("TFL_WasCanCollide") then
+				handle:SetAttribute("TFL_WasCanCollide", handle.CanCollide)
+			end
+			handle.CanCollide = false
+			handle.Massless = true
+			-- IMPORTANT: Keep CanTouch enabled for touch events to work!
 		end
 	end
 end
 
--- ============ CHARACTER (respawn-safe) ============
-local epoch = 0
-local function bindCharacter(char)
-	epoch += 1
-	local myEpoch = epoch
-	currentCharacter = char
-	currentRoot = nil
-	if not char then return end
-	local r = char:FindFirstChild("HumanoidRootPart")
-	if not r then r = char:WaitForChild("HumanoidRootPart", 5) end
-	if epoch == myEpoch and r then currentRoot = r end
-	refreshTools()
-end
-
--- ============ EQUIP / UNEQUIP ============
-local function equipTools(force)
-	local now = os.clock()
-	if not force and now - lastEquipCheck < EQUIP_INTERVAL then return end
-	lastEquipCheck = now
-
-	local char = currentCharacter
-	local bp = player:FindFirstChildOfClass("Backpack")
-	if not char or not bp then return end
-
-	local changed = false
-	table.clear(wantedTools)
-	for _, tool in ipairs(bp:GetChildren()) do
-		if tool:IsA("Tool") then
-			tool.Parent = char
-			changed = true
-			wantedTools[#wantedTools + 1] = tool
-		end
-	end
-	for _, tool in ipairs(char:GetChildren()) do
-		if tool:IsA("Tool") then wantedTools[#wantedTools + 1] = tool end
-	end
-	if changed then refreshTools() end
-end
-
-local function unequipTools()
-	local char = currentCharacter
-	local bp = player:FindFirstChildOfClass("Backpack")
-	if not char or not bp then return end
-	for _, tool in ipairs(char:GetChildren()) do
-		if tool:IsA("Tool") then tool.Parent = bp end
-	end
-	clearStabilizers()
-	table.clear(toolsCache)
-	table.clear(touchParts)
-	table.clear(remoteCache)
-	table.clear(wantedTools)
-end
-
--- ============ HANDLE STABILIZER (keeps every tool visually welded) ============
-local function getToolHandle(tool)
-	if not tool then return nil end
-	return tool:FindFirstChild("Handle") or tool:FindFirstChildWhichIsA("BasePart")
-end
-
-local function clearStabilizers()
-	for i = 1, #toolsCache do
-		local h = getToolHandle(toolsCache[i])
-		local w = h and h:FindFirstChild("SPTStabilizer")
-		if w then w:Destroy() end
-	end
-end
-
--- if the engine fully drops a tool into the workspace, bring it back into the rig
-local function recaptureDropped()
-	local char = currentCharacter
-	if not char then return end
-	local bp = player:FindFirstChildOfClass("Backpack")
-	for i = 1, #wantedTools do
-		local tool = wantedTools[i]
-		if tool and tool.Parent and tool.Parent ~= char and tool.Parent ~= bp then
-			pcall(function() tool.Parent = char end)
-		end
-	end
-end
-
--- weld every handle to the HumanoidRootPart so the client always renders them in-hand
-local function stabilizeHandles()
-	local root = currentRoot
-	if not root or not root.Parent then return end
-	for i = 1, #toolsCache do
-		local tool = toolsCache[i]
-		if tool and tool.Parent then
-			local handle = getToolHandle(tool)
-			if handle and not handle.Anchored then
-				handle.CanCollide = false
-				handle.Massless = true
-				local w = handle:FindFirstChild("SPTStabilizer")
-				if not w then
-					local rel = root.CFrame:ToObjectSpace(handle.CFrame)
-					local c0 = HAND_OFFSETS[(i - 1) % #HAND_OFFSETS + 1]
-					if rel.Position.Magnitude < 4 then c0 = rel end  -- keep natural hand pose if still in-hand
-					w = Instance.new("Weld")
-					w.Name = "SPTStabilizer"
-					w.Part0 = root
-					w.Part1 = handle
-					w.C0 = c0
-					w.C1 = CFrame.new()
-					w.Parent = handle
-				elseif w.Part0 ~= root or w.Part1 ~= handle then
-					w.Part0 = root
-					w.Part1 = handle
+-- Remove all tool welds (called on deactivation)
+local function removeAllToolWelds()
+	for _, tool in ipairs(ToolsCache) do
+		if tool then
+			local handle = tool:FindFirstChild("Handle")
+			if handle then
+				local wasCanCollide = handle:GetAttribute("TFL_WasCanCollide")
+				if wasCanCollide ~= nil then
+					handle.CanCollide = wasCanCollide
 				end
+				handle.Massless = false
+			end
+			removeToolWeld(tool)
+		end
+	end
+	table.clear(ToolWelds)
+end
+
+-- Character bind
+local function bindCharacter(char)
+	CurrentCharacter = char
+	CurrentRoot = char and getHRP(char)
+	
+	-- Clean up old character connections
+	for _, conn in ipairs(CharacterConnections) do
+		if conn and conn.Connected then
+			conn:Disconnect()
+		end
+	end
+	table.clear(CharacterConnections)
+	
+	-- Set up new character connections
+	if char then
+		table.insert(CharacterConnections, char.ChildAdded:Connect(function(child)
+			if child:IsA("Tool") and Active then
+				-- Cache tools immediately when added
+				table.clear(TempToolsBuffer)
+				for _, tool in ipairs(char:GetChildren()) do
+					if tool:IsA("Tool") then
+						table.insert(TempToolsBuffer, tool)
+					end
+				end
+				-- Apply welds to new tool
+				if #TempToolsBuffer > 0 then
+					applyToolWelds()
+				end
+			end
+		end))
+		
+		table.insert(CharacterConnections, char.ChildRemoved:Connect(function(child)
+			if child:IsA("Tool") then
+				removeToolWeld(child)
+			end
+		end))
+	end
+end
+
+track(LocalPlayer.CharacterAdded:Connect(bindCharacter))
+track(LocalPlayer.CharacterRemoving:Connect(function()
+	CurrentCharacter = nil
+	CurrentRoot = nil
+	removeAllToolWelds()
+	table.clear(ToolsCache)
+end))
+
+if LocalPlayer.Character then
+	bindCharacter(LocalPlayer.Character)
+end
+
+-- Equip up to MAX_TOOLS from backpack - OPTIMIZED: single pass
+local function equipAllTools()
+	local char = CurrentCharacter
+	if not char then return end
+	
+	local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
+	if not backpack then return end
+	
+	local equippedCount = 0
+	for _, tool in ipairs(backpack:GetChildren()) do
+		if tool:IsA("Tool") and equippedCount < MAX_TOOLS then
+			tool.Parent = char
+			equippedCount = equippedCount + 1
+		end
+	end
+end
+
+-- Cache currently equipped tools (respects MAX_TOOLS limit) - OPTIMIZED: single pass
+local function cacheTools()
+	table.clear(ToolsCache)
+	local char = CurrentCharacter
+	if not char then return end
+	
+	local count = 0
+	for _, tool in ipairs(char:GetChildren()) do
+		if tool:IsA("Tool") then
+			count = count + 1
+			if count <= MAX_TOOLS then
+				table.insert(ToolsCache, tool)
 			end
 		end
 	end
 end
 
--- ============ TARGET (cached every 100ms) ============
-local function getTarget()
-	if os.clock() - lastTargetScan < 0.1 then return cachedTarget end
-	lastTargetScan = os.clock()
-	local myRoot = currentRoot
-	if not myRoot then cachedTarget = nil return nil end
-	local myPos = myRoot.Position
-	local bestRoot, bestSq = nil, TOUCH_ASSIST_RANGE * TOUCH_ASSIST_RANGE
+local function hasBackpackTools()
+	local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
+	if not backpack then return false end
+	for _, child in ipairs(backpack:GetChildren()) do
+		if child:IsA("Tool") then
+			return true
+		end
+	end
+	return false
+end
+
+local function equipCacheAndWeld()
+	if not Active then return false end
+	equipAllTools()
+	cacheTools()
+	if #ToolsCache > 0 then
+		applyToolWelds()
+		return true
+	end
+	return false
+end
+
+-- Respawn-safe equip: try immediately, then retry briefly while Backpack/Character finish loading.
+local function requestReequip()
+	if not Active then return end
+	ReequipToken = ReequipToken + 1
+	local token = ReequipToken
+	
+	task.spawn(function()
+		local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+		if token ~= ReequipToken or not Active then return end
+		
+		bindCharacter(char)
+		CurrentRoot = getHRP(char) or char:WaitForChild("HumanoidRootPart", 5)
+		
+		local deadline = os.clock() + 3
+		repeat
+			if token ~= ReequipToken or not Active then return end
+			
+			if equipCacheAndWeld() and not hasBackpackTools() then
+				return
+			end
+			
+			RunService.Heartbeat:Wait()
+		until os.clock() >= deadline
+		
+		equipCacheAndWeld()
+	end)
+end
+
+-- Get closest target for touch assist (exclude self) - OPTIMIZED: pre-allocated buffer
+local function getClosestTarget()
+	if not CurrentRoot then return nil end
+	
+	local closest = nil
+	local bestDist = TOUCH_ASSIST_RANGE
+	
 	for _, plr in ipairs(Players:GetPlayers()) do
-		if plr ~= player then
+		if plr ~= LocalPlayer then
 			local char = plr.Character
 			if char then
+				local root = getHRP(char)
 				local hum = char:FindFirstChildOfClass("Humanoid")
-				local r = char:FindFirstChild("HumanoidRootPart")
-				if hum and r and hum.Health > 0 then
-					local dx, dy, dz = r.Position.X - myPos.X, r.Position.Y - myPos.Y, r.Position.Z - myPos.Z
-					local dsq = dx * dx + dy * dy + dz * dz
-					if dsq < bestSq then
-						bestSq = dsq
-						bestRoot = r
+				if root and hum and hum.Health > 0 then
+					local dist = (root.Position - CurrentRoot.Position).Magnitude
+					if dist < bestDist then
+						bestDist = dist
+						closest = char
 					end
 				end
 			end
 		end
 	end
-	cachedTarget = bestRoot
-	return bestRoot
+	
+	return closest
 end
 
--- ============ DAMAGE CORE ============
-local function damagePulse()
-	-- 1) activate every equipped tool
-	for i = 1, #toolsCache do
-		local t = toolsCache[i]
-		if t and t.Parent then pcall(t.Activate, t) end
+-- Touch assist for nearby targets - OPTIMIZED: pre-allocated buffer
+local function touchAssist()
+	local target = getClosestTarget()
+	if not target then return end
+	
+	-- Build target parts using pre-allocated buffer
+	table.clear(TargetPartsBuffer)
+	for _, name in ipairs({"HumanoidRootPart", "UpperTorso", "Torso", "Head"}) do
+		local part = target:FindFirstChild(name)
+		if part and part:IsA("BasePart") then
+			table.insert(TargetPartsBuffer, part)
+		end
 	end
-
-	-- 2) touch assist on nearest target
-	local target = getTarget()
-	if target then
-		for i = 1, #toolsCache do
-			local tp = touchParts[toolsCache[i]]
-			if tp and tp.Parent then
-				for _ = 1, TOUCH_ASSIST_BURST do
-					firetouchinterest(tp, target, 0)
-					firetouchinterest(tp, target, 1)
+	
+	if #TargetPartsBuffer == 0 then return end
+	
+	for _, tool in ipairs(ToolsCache) do
+		if tool and tool.Parent and tool:IsDescendantOf(workspace) then
+			local touch = getToolTouchPart(tool)
+			if touch then
+				for _, part in ipairs(TargetPartsBuffer) do
+					pcall(firetouchinterest, touch, part, 0)
+					pcall(firetouchinterest, touch, part, 1)
 				end
 			end
 		end
-		-- 3) remote burst for guaranteed hits
-		for _, rem in pairs(remoteCache) do
-			if rem and rem.Parent then
-				pcall(rem.FireServer, rem, target)
+	end
+end
+
+-- Activate tools based on mode - OPTIMIZED: direct calls
+local function activateTools()
+	for _, tool in ipairs(ToolsCache) do
+		if tool and tool.Parent and tool:IsDescendantOf(workspace) then
+			local fightEvent = tool:FindFirstChild("FightEvent", true)
+			
+			-- Mode: Normal (Activate only) - no event fired
+			if Mode == "Normal" then
+				pcall(tool.Activate, tool)
+			end
+			
+			-- Mode: Event (FightEvent only) - no Activate called
+			if Mode == "Event" and fightEvent and fightEvent:IsA("RemoteEvent") then
+				pcall(fightEvent.FireServer, fightEvent)
+			end
+			
+			-- Mode: Max (Both Activate and FightEvent)
+			if Mode == "Max" then
+				pcall(tool.Activate, tool)
+				if fightEvent and fightEvent:IsA("RemoteEvent") then
+					pcall(fightEvent.FireServer, fightEvent)
+				end
 			end
 		end
 	end
 end
--- ============ RESPAWN BURST ============
-local function beginBurst()
-	if burstActive then return end
-	burstActive = true
-	task.spawn(function()
-		local t0 = os.clock()
-		equipTools(true)
-		stabilizeHandles()
-		RunService.Heartbeat:Wait()
-		while active and os.clock() - t0 < RESPAWN_BURST_TIME do
-			equipTools(true)
-			recaptureDropped()
-			stabilizeHandles()
-			damagePulse()
-			RunService.Heartbeat:Wait()
-		end
-		burstActive = false
-	end)
+
+-- Damage pulse (activate + touch)
+local function damagePulse()
+	activateTools()
+	touchAssist()
 end
 
--- ============ MAIN ENGINE ============
-RunService.Stepped:Connect(function()
-	if not active then return end
-	local now = os.clock()
-	if now - lastPulse < PULSE_INTERVAL then return end
-	lastPulse = now
-	equipTools()
-	recaptureDropped()
-	stabilizeHandles()
-	damagePulse()
-end)
+-- UI Functions with mobile/PC scaling
+local UIScale
 
--- ============ RESPAWN ============
-player.CharacterAdded:Connect(function()
-	if not active then return end
-	task.defer(function()
-		RunService.Heartbeat:Wait()
-		RunService.Heartbeat:Wait()
-		if active then
-			refreshTools()
-			equipTools(true)
-			recaptureDropped()
-			stabilizeHandles()
-			beginBurst()
+local function createUI()
+	local screenGui = Instance.new("ScreenGui")
+	screenGui.Name = "TFLUseTools"
+	screenGui.ResetOnSpawn = false
+	screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
+	screenGui.Parent = CoreGui
+	
+	UIScale = Instance.new("UIScale", screenGui)
+	
+	local function updateScale()
+		local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
+		local minDim = math.min(viewport.X, viewport.Y)
+		
+		if UserInputService.TouchEnabled then
+			UIScale.Scale = math.clamp(minDim / 720, 0.7, 0.85)
+		else
+			UIScale.Scale = math.clamp(minDim / 1200, 0.9, 1.1)
 		end
-	end)
-end)
-
-if player.Character then bindCharacter(player.Character) end
-player.CharacterAdded:Connect(bindCharacter)
-
--- ============ UI ============
-local gui = Instance.new("ScreenGui")
-gui.Name = "RTXUseTools"
-gui.ResetOnSpawn = false
-gui.ZIndexBehavior = Enum.ZIndexBehavior.Global
-gui.Parent = game:GetService("CoreGui")
-
-local toggle = Instance.new("TextButton", gui)
-toggle.Size = UDim2.fromOffset(180, 64)
-toggle.Position = UDim2.fromScale(0.98, 0.55)
-toggle.AnchorPoint = Vector2.new(1, 0.5)
-toggle.Text = "USE TOOLS: OFF"
-toggle.Font = Enum.Font.Code
-toggle.TextSize = 15
-toggle.TextColor3 = Theme.Text
-toggle.BackgroundColor3 = Theme.Glass
-toggle.BackgroundTransparency = 0.08
-toggle.AutoButtonColor = false
-toggle.Active = true
-toggle.Draggable = true
-toggle.ZIndex = 9999
-round(toggle, 16)
-stroke(toggle, 2)
-
-local glow = Instance.new("UIStroke", toggle)
-glow.Color = Theme.Accent
-glow.Thickness = 2
-glow.Transparency = 0.6
-
-toggle.MouseEnter:Connect(function()
-	TweenService:Create(toggle, ANIM, { Size = UDim2.fromOffset(190, 70) }):Play()
-	TweenService:Create(glow, ANIM, { Transparency = 0.25 }):Play()
-end)
-toggle.MouseLeave:Connect(function()
-	TweenService:Create(toggle, ANIM, { Size = UDim2.fromOffset(180, 64) }):Play()
-	TweenService:Create(glow, ANIM, { Transparency = 0.6 }):Play()
-end)
-
-local function updateText()
-	toggle.Text = active and "USE TOOLS: ON" or "USE TOOLS: OFF"
+	end
+	
+	updateScale()
+	workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(updateScale)
+	if workspace.CurrentCamera then
+		workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(updateScale)
+	end
+	
+	-- Main panel
+	local panel = Instance.new("Frame")
+	panel.Name = "Panel"
+	panel.Size = UDim2.fromOffset(200, 180)
+	panel.Position = UDim2.fromScale(0.98, 0.55)
+	panel.AnchorPoint = Vector2.new(1, 0.5)
+	panel.BackgroundColor3 = THEME.Panel
+	panel.BackgroundTransparency = 0.08
+	panel.Parent = screenGui
+	Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 12)
+	Instance.new("UIStroke", panel).Color = THEME.Accent
+	
+	local mainLayout = Instance.new("UIListLayout", panel)
+	mainLayout.Padding = UDim.new(0, 6)
+	mainLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	mainLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	
+	local uiPadding = Instance.new("UIPadding", panel)
+	uiPadding.PaddingLeft = UDim.new(0, 10)
+	uiPadding.PaddingRight = UDim.new(0, 10)
+	uiPadding.PaddingTop = UDim.new(0, 8)
+	
+	-- Toggle button
+	local toggleBtn = Instance.new("TextButton")
+	toggleBtn.Name = "Toggle"
+	toggleBtn.Size = UDim2.new(1, 0, 0, 30)
+	toggleBtn.BackgroundColor3 = THEME.Button
+	toggleBtn.TextColor3 = THEME.Text
+	toggleBtn.Font = Enum.Font.GothamBold
+	toggleBtn.TextSize = 14
+	toggleBtn.Text = "USE TOOLS: OFF"
+	toggleBtn.AutoButtonColor = false
+	toggleBtn.Parent = panel
+	Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 8)
+	Instance.new("UIStroke", toggleBtn).Color = THEME.Accent
+	
+	-- Mode button
+	local modeBtn = Instance.new("TextButton")
+	modeBtn.Name = "Mode"
+	modeBtn.Size = UDim2.new(1, 0, 0, 24)
+	modeBtn.BackgroundColor3 = THEME.Button
+	modeBtn.TextColor3 = THEME.Text
+	modeBtn.Font = Enum.Font.Gotham
+	modeBtn.TextSize = 12
+	modeBtn.Text = "Mode: Normal"
+	modeBtn.AutoButtonColor = false
+	modeBtn.Parent = panel
+	Instance.new("UICorner", modeBtn).CornerRadius = UDim.new(0, 6)
+	Instance.new("UIStroke", modeBtn).Color = THEME.Accent
+	
+	-- APS control row
+	local apsRow = Instance.new("Frame")
+	apsRow.Name = "APSRow"
+	apsRow.Size = UDim2.new(1, 0, 0, 24)
+	apsRow.BackgroundTransparency = 1
+	apsRow.Parent = panel
+	
+	local apsLayout = Instance.new("UIListLayout", apsRow)
+	apsLayout.FillDirection = Enum.FillDirection.Horizontal
+	apsLayout.Padding = UDim.new(0, 4)
+	
+	local apsLbl = Instance.new("TextLabel")
+	apsLbl.Name = "Label"
+	apsLbl.Size = UDim2.new(0, 40, 1, 0)
+	apsLbl.BackgroundTransparency = 1
+	apsLbl.TextColor3 = THEME.Text
+	apsLbl.Font = Enum.Font.Gotham
+	apsLbl.TextSize = 12
+	apsLbl.Text = "APS:"
+	apsLbl.Parent = apsRow
+	
+	local apsMinus = Instance.new("TextButton")
+	apsMinus.Size = UDim2.new(0, 30, 1, 0)
+	apsMinus.BackgroundColor3 = THEME.Button
+	apsMinus.TextColor3 = THEME.Text
+	apsMinus.Font = Enum.Font.GothamBold
+	apsMinus.TextSize = 14
+	apsMinus.Text = "-"
+	apsMinus.AutoButtonColor = false
+	apsMinus.Parent = apsRow
+	Instance.new("UICorner", apsMinus).CornerRadius = UDim.new(0, 4)
+	Instance.new("UIStroke", apsMinus).Color = THEME.Accent
+	
+	local apsValue = Instance.new("TextLabel")
+	apsValue.Name = "Value"
+	apsValue.Size = UDim2.new(0, 40, 1, 0)
+	apsValue.BackgroundTransparency = 1
+	apsValue.TextColor3 = THEME.Text
+	apsValue.Font = Enum.Font.Gotham
+	apsValue.TextSize = 12
+	apsValue.Text = tostring(APS)
+	apsValue.Parent = apsRow
+	
+	local apsPlus = Instance.new("TextButton")
+	apsPlus.Size = UDim2.new(0, 30, 1, 0)
+	apsPlus.BackgroundColor3 = THEME.Button
+	apsPlus.TextColor3 = THEME.Text
+	apsPlus.Font = Enum.Font.GothamBold
+	apsPlus.TextSize = 14
+	apsPlus.Text = "+"
+	apsPlus.AutoButtonColor = false
+	apsPlus.Parent = apsRow
+	Instance.new("UICorner", apsPlus).CornerRadius = UDim.new(0, 4)
+	Instance.new("UIStroke", apsPlus).Color = THEME.Accent
+	
+	-- Tools control row
+	local toolsRow = Instance.new("Frame")
+	toolsRow.Name = "ToolsRow"
+	toolsRow.Size = UDim2.new(1, 0, 0, 24)
+	toolsRow.BackgroundTransparency = 1
+	toolsRow.Parent = panel
+	
+	local toolsLayout = Instance.new("UIListLayout", toolsRow)
+	toolsLayout.FillDirection = Enum.FillDirection.Horizontal
+	toolsLayout.Padding = UDim.new(0, 4)
+	
+	local toolsLbl = Instance.new("TextLabel")
+	toolsLbl.Name = "Label"
+	toolsLbl.Size = UDim2.new(0, 40, 1, 0)
+	toolsLbl.BackgroundTransparency = 1
+	toolsLbl.TextColor3 = THEME.Text
+	toolsLbl.Font = Enum.Font.Gotham
+	toolsLbl.TextSize = 12
+	toolsLbl.Text = "Tools:"
+	toolsLbl.Parent = toolsRow
+	
+	local toolsMinus = Instance.new("TextButton")
+	toolsMinus.Size = UDim2.new(0, 30, 1, 0)
+	toolsMinus.BackgroundColor3 = THEME.Button
+	toolsMinus.TextColor3 = THEME.Text
+	toolsMinus.Font = Enum.Font.GothamBold
+	toolsMinus.TextSize = 14
+	toolsMinus.Text = "-"
+	toolsMinus.AutoButtonColor = false
+	toolsMinus.Parent = toolsRow
+	Instance.new("UICorner", toolsMinus).CornerRadius = UDim.new(0, 4)
+	Instance.new("UIStroke", toolsMinus).Color = THEME.Accent
+	
+	local toolsValue = Instance.new("TextLabel")
+	toolsValue.Name = "Value"
+	toolsValue.Size = UDim2.new(0, 40, 1, 0)
+	toolsValue.BackgroundTransparency = 1
+	toolsValue.TextColor3 = THEME.Text
+	toolsValue.Font = Enum.Font.Gotham
+	toolsValue.TextSize = 12
+	toolsValue.Text = tostring(MAX_TOOLS)
+	toolsValue.Parent = toolsRow
+	
+	local toolsPlus = Instance.new("TextButton")
+	toolsPlus.Size = UDim2.new(0, 30, 1, 0)
+	toolsPlus.BackgroundColor3 = THEME.Button
+	toolsPlus.TextColor3 = THEME.Text
+	toolsPlus.Font = Enum.Font.GothamBold
+	toolsPlus.TextSize = 14
+	toolsPlus.Text = "+"
+	toolsPlus.AutoButtonColor = false
+	toolsPlus.Parent = toolsRow
+	Instance.new("UICorner", toolsPlus).CornerRadius = UDim.new(0, 4)
+	Instance.new("UIStroke", toolsPlus).Color = THEME.Accent
+	
+	return screenGui, toggleBtn, modeBtn, apsValue, toolsValue, apsMinus, apsPlus, toolsMinus, toolsPlus
 end
 
+local ScreenGui, ToggleButton, ModeButton, APSValue, ToolsValue, APSMinus, APSPlus, ToolsMinus, ToolsPlus = createUI()
+
+-- Update UI
+local function updateUI()
+	if ToggleButton then
+		ToggleButton.Text = Active and "USE TOOLS: ON" or "USE TOOLS: OFF"
+	end
+	if ModeButton then
+		ModeButton.Text = "Mode: " .. Mode
+	end
+	if APSValue then
+		APSValue.Text = tostring(APS)
+	end
+	if ToolsValue then
+		ToolsValue.Text = tostring(MAX_TOOLS)
+	end
+	
+	-- Disable APS controls in Max mode (fixed at 10)
+	local apsDisabled = Mode == "Max"
+	if apsMinus then apsMinus.Active = not apsDisabled end
+	if apsPlus then apsPlus.Active = not apsDisabled end
+end
+
+-- Set state - OPTIMIZED: Equip tools on activation, unequip ALL on deactivation
 local function setState(state)
-	active = state
-	updateText()
-	if active then
-		equipTools(true)
-		task.defer(function()
-			RunService.Heartbeat:Wait()
-			if active then
-				refreshTools()
-				recaptureDropped()
-				stabilizeHandles()
-				damagePulse()
-			end
-		end)
+	Active = state and true or false
+	updateUI()
+	
+	if Active then
+		requestReequip()
 	else
-		unequipTools()
+		ReequipToken = ReequipToken + 1
+		removeAllToolWelds()
+		
+		-- Unequip ALL tools when deactivating
+		local char = CurrentCharacter
+		if char then
+			for _, tool in ipairs(char:GetChildren()) do
+				if tool:IsA("Tool") then
+					local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
+					if backpack then
+						tool.Parent = backpack
+					end
+				end
+			end
+		end
+		table.clear(ToolsCache)
 	end
 end
 
-toggle.MouseButton1Click:Connect(function()
-	setState(not active)
-end)
-UIS.InputBegan:Connect(function(i, g)
-	if g then return end
-	if i.KeyCode == TOGGLE_KEY then setState(not active) end
+-- Cycle modes
+local function cycleMode()
+	if Mode == "Normal" then
+		Mode = "Event"
+	elseif Mode == "Event" then
+		Mode = "Max"
+	else
+		Mode = "Normal"
+	end
+	_G.TFL_UseTools.Mode = Mode
+	updateUI()
+end
+
+-- UI Events
+ToggleButton.MouseButton1Click:Connect(function()
+	setState(not Active)
 end)
 
-updateText()
-print("⚡ RTX Use Tools V7 Loaded (90Hz hyper)")
+ModeButton.MouseButton1Click:Connect(function()
+	cycleMode()
+end)
+
+APSMinus.MouseButton1Click:Connect(function()
+	-- Only allow APS change if not in Max mode
+	if Mode ~= "Max" then
+		APS = math.max(10, APS - 10)
+		_G.TFL_UseTools.APS = APS
+		updateUI()
+	end
+end)
+
+APSPlus.MouseButton1Click:Connect(function()
+	-- Only allow APS change if not in Max mode
+	if Mode ~= "Max" then
+		APS = math.min(1000, APS + 10)
+		_G.TFL_UseTools.APS = APS
+		updateUI()
+	end
+end)
+
+ToolsMinus.MouseButton1Click:Connect(function()
+	MAX_TOOLS = math.max(1, MAX_TOOLS - 1)
+	_G.TFL_UseTools.MaxTools = MAX_TOOLS
+	updateUI()
+end)
+
+ToolsPlus.MouseButton1Click:Connect(function()
+	MAX_TOOLS = math.min(10, MAX_TOOLS + 1)
+	_G.TFL_UseTools.MaxTools = MAX_TOOLS
+	updateUI()
+end)
+
+-- Keybind
+track(UserInputService.InputBegan:Connect(function(input, gpe)
+	if gpe then return end
+	if input.KeyCode == Enum.KeyCode.E then
+		setState(not Active)
+	elseif input.KeyCode == Enum.KeyCode.F then
+		cycleMode()
+	end
+end))
+
+-- ============================================================================
+-- GUIDE() - Call this function to run a re-equip loop
+-- OPTIMIZED: Instant re-equip with minimal delay, no burst firing
+-- ============================================================================
+
+-- Death backup: listen to Humanoid.Died on current character
+local function listenForDeath(char)
+	if not char then return end
+	local hum = char:FindFirstChildWhichIsA("Humanoid")
+	if not hum then return end
+	
+	-- Track the death connection so we can disconnect on cleanup
+	if _G.__TFL_DeathConn and _G.__TFL_DeathConn.Connected then
+		_G.__TFL_DeathConn:Disconnect()
+	end
+	
+	_G.__TFL_DeathConn = hum.Died:Connect(function()
+		if not Active then return end
+		requestReequip()
+	end)
+	
+	-- Also track in Connections for cleanup
+	table.insert(Connections, _G.__TFL_DeathConn)
+end
+
+-- Guide() - Re-equip loop: equips tools, runs until tools are cached, then stops
+-- OPTIMIZED: No burst firing, instant re-equip
+local function Guide()
+	requestReequip()
+end
+
+-- Respawn handler - uses Guide() for re-equip on character add
+track(LocalPlayer.CharacterAdded:Connect(function(char)
+	-- Re-attach death listener to new character
+	listenForDeath(char)
+	
+	-- Instantly re-equip tools on respawn if Use Tools is active
+	if Active then
+		requestReequip()
+	end
+end))
+
+if LocalPlayer.Character then
+	listenForDeath(LocalPlayer.Character)
+end
+
+local function bindBackpack(backpack)
+	if not backpack then return end
+	track(backpack.ChildAdded:Connect(function(child)
+		if child:IsA("Tool") and Active then
+			requestReequip()
+		end
+	end))
+end
+
+bindBackpack(LocalPlayer:FindFirstChildOfClass("Backpack"))
+track(LocalPlayer.ChildAdded:Connect(function(child)
+	if child:IsA("Backpack") then
+		bindBackpack(child)
+		if Active then
+			requestReequip()
+		end
+	end
+end))
+
+-- Main loop - OPTIMIZED: PreSimulation for maximum responsiveness
+track(RunService.PreSimulation:Connect(function()
+	if not Active then return end
+	
+	local now = os.clock()
+	
+	-- Max mode uses fixed 10 APS
+	local effectiveAPS = Mode == "Max" and 10 or APS
+	local pulseInterval = 1 / effectiveAPS
+	
+	if now - LastPulse < pulseInterval then return end
+	LastPulse = now
+	
+	local char = CurrentCharacter
+	if not char then return end
+	
+	-- Cache tools and check if new tools need welds
+	cacheTools()
+	
+	-- Only apply welds if we have tools that aren't welded yet
+	local needsWelds = false
+	for _, tool in ipairs(ToolsCache) do
+		if tool and tool.Parent and ToolWelds[tool] == nil then
+			local handle = tool:FindFirstChild("Handle")
+			if handle then
+				needsWelds = true
+				break
+			end
+		end
+	end
+	
+	if needsWelds then
+		applyToolWelds()
+	end
+	
+	if #ToolsCache > 0 then
+		damagePulse()
+	end
+end))
+
+-- Character tool tracking for weld management
+track(LocalPlayer.CharacterAdded:Connect(function(char)
+	track(char.ChildAdded:Connect(function(child)
+		if child:IsA("Tool") and Active then
+			cacheTools()
+			task.defer(applyToolWelds)
+		end
+	end))
+	
+	track(char.ChildRemoved:Connect(function(child)
+		if child:IsA("Tool") then
+			removeToolWeld(child)
+		end
+	end))
+end))
+
+-- Initial update
+updateUI()
+
+print("[TFL Use Tools] Loaded - Advanced tool activation system ready (APS: 10-1000, Tools: 1-10)")
+print("[TFL Use Tools] Mode: Normal=Activate, Event=FightEvent, Max=Both (fixed 10APS)")
+
+-- Expose Guide() globally so other scripts can call it
+_G.TFL_Guide = Guide

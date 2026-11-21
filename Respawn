@@ -1,183 +1,181 @@
--- ⚡ QUANTUM FAST RESPAWN V6 (hyper low-latency + offline guarantee)
--- Fires every respawn-like remote instantly, falls back to LoadCharacter.
-
+-- ==========================================
+-- UNIVERSAL SERVICE & PLAYER DECLARATIONS
+-- ==========================================
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+local LocalPlayer = Players.LocalPlayer
 
-local player = Players.LocalPlayer
-
-if getgenv().SPT_Loaded and getgenv().SPT_Loaded["Respawn"] then
-	print("⚡ Respawn already loaded.")
-	return
-end
-getgenv().SPT_Loaded = getgenv().SPT_Loaded or {}
-getgenv().SPT_Loaded["Respawn"] = true
-
--- ============ SETTINGS ============
-local TOGGLE_KEY = Enum.KeyCode.R
-local HEALTH_THRESHOLD = 6
-local FAILSAFE_TIME = 0.12  -- force local respawn if no server response
-local BACKUP_DELAY = 0.06   -- stagger backup path
-local MIN_FIRE_INTERVAL = 0.2
-
--- ============ STATE ============
-local active = false
-local firing = false
-local connections = {}
-local characterToken = 0
-local lastRequestTime = 0
+-- ==========================================
+-- SCRIPT 1: ULTRA-FAST AUTOMATIC RESPAWN
+-- ==========================================
+_G.RespawnScript = _G.RespawnScript or { Active = false, Connections = {} }
 
 local function disconnectAll()
-	for _, c in ipairs(connections) do
-		if c and c.Connected then c:Disconnect() end
+    for _, conn in ipairs(_G.RespawnScript.Connections) do
+        if conn and conn.Connected then
+            conn:Disconnect()
+        end
+    end
+    _G.RespawnScript.Connections = {}
+end
+
+local function forceRespawn()
+    task.spawn(function()
+        local guide = ReplicatedStorage:FindFirstChild("Guide")
+        if guide then guide:FireServer() end
+    end)
+    
+    task.spawn(function()
+        if LocalPlayer and LocalPlayer:FindFirstChild("LoadCharacter") then
+            LocalPlayer:LoadCharacter()
+        end
+    end)
+end
+
+local function onCharacterAdded(character)
+    if not _G.RespawnScript.Active then return end
+
+    local humanoid = character:FindFirstChildOfClass("Humanoid") or character:WaitForChild("Humanoid", 0.5)
+    if not humanoid then return end
+
+    local hasRespawned = false
+    local function trigger()
+        if not hasRespawned and _G.RespawnScript.Active then
+            hasRespawned = true
+            forceRespawn()
+        end
+    end
+
+    -- 1. Heartbeat check (Executes directly before engine physics step)
+    local hbConn
+    hbConn = RunService.Heartbeat:Connect(function()
+        if humanoid.Health <= 1 then
+            trigger()
+            hbConn:Disconnect()
+        end
+    end)
+    table.insert(_G.RespawnScript.Connections, hbConn)
+
+    -- 2. Immediate memory-level health monitoring
+    table.insert(_G.RespawnScript.Connections, humanoid:GetPropertyChangedSignal("Health"):Connect(function()
+        if humanoid.Health <= 1 then
+            trigger()
+        end
+    end))
+
+    -- 3. Pre-emptive removal trick: destroy humanoid root on death to cut ragdoll animation latency
+    table.insert(_G.RespawnScript.Connections, humanoid.Died:Connect(function()
+        local root = character:FindFirstChild("HumanoidRootPart")
+        if root then root:Destroy() end
+        trigger()
+    end))
+end
+
+local function initRespawnScript()
+    if _G.RespawnScript.Active then
+        _G.RespawnScript.Active = false
+        disconnectAll()
+        print("[RespawnScript] Disabled")
+    else
+        _G.RespawnScript.Active = true
+        
+        table.insert(_G.RespawnScript.Connections, LocalPlayer.CharacterAdded:Connect(onCharacterAdded))
+
+        if LocalPlayer.Character then
+            task.spawn(onCharacterAdded, LocalPlayer.Character)
+        else
+            forceRespawn()
+        end
+        print("[RespawnScript] Enabled (Ultra-Fast)")
+    end
+end
+
+-- ==========================================
+-- SCRIPT 2: MOBILE NOCLIP WITH GUI TOGGLE
+-- ==========================================
+local NoclipConnection = nil
+_G.NoclipActive = _G.NoclipActive or false 
+
+-- Create Screen GUI (Protects against deletion in some executors)
+local ScreenGui = Instance.new("ScreenGui")
+local ToggleButton = Instance.new("TextButton")
+local UICorner = Instance.new("UICorner")
+
+-- Setup GUI Properties
+ScreenGui.Name = "NoclipMobileGui"
+-- Attaches to CoreGui so it persists, falls back to PlayerGui if restricted
+local success, err = pcall(function() ScreenGui.Parent = CoreGui end)
+if not success then ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+
+-- Setup Button Properties
+ToggleButton.Name = "ToggleButton"
+ToggleButton.Parent = ScreenGui
+ToggleButton.BackgroundColor3 = Color3.fromRGB(255, 75, 75) -- Starts red (Off)
+ToggleButton.Position = UDim2.new(0.05, 0, 0.4, 0) -- Left-middle side of screen
+ToggleButton.Size = UDim2.new(0, 100, 0, 50)
+ToggleButton.Font = Enum.Font.SourceSansBold
+ToggleButton.Text = "Noclip: OFF"
+ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleButton.TextSize = 18
+ToggleButton.Active = true
+ToggleButton.Draggable = true -- Allows you to drag the button around your screen
+
+-- Round the button corners
+UICorner.CornerRadius = UDim.new(0, 8)
+UICorner.Parent = ToggleButton
+
+local function startNoclip()
+	if NoclipConnection then NoclipConnection:Disconnect() end
+	
+	NoclipConnection = RunService.Stepped:Connect(function()
+		if _G.NoclipActive and LocalPlayer.Character then
+			for _, v in pairs(LocalPlayer.Character:GetDescendants()) do
+				if v:IsA("BasePart") and v.CanCollide then
+					v.CanCollide = false
+				end
+			end
+		end
+	end)
+end
+
+local function stopNoclip()
+	if NoclipConnection then
+		NoclipConnection:Disconnect()
+		NoclipConnection = nil
 	end
-	table.clear(connections)
-end
-
-local function track(conn)
-	connections[#connections + 1] = conn
-	return conn
-end
-
--- discover every respawn-ish remote in ReplicatedStorage
-local function findRespawnRemotes()
-	local found = {}
-	if not ReplicatedStorage then return found end
-	for _, o in ipairs(ReplicatedStorage:GetDescendants()) do
-		if o:IsA("RemoteEvent") then
-			local n = string.lower(o.Name)
-			if n:find("respawn") or n:find("spawn") or n:find("guide") or n:find("reset") or n:find("death") then
-				found[#found + 1] = o
+	if LocalPlayer.Character then
+		for _, v in pairs(LocalPlayer.Character:GetDescendants()) do
+			if v:IsA("BasePart") then
+				v.CanCollide = true
 			end
 		end
 	end
-	return found
 end
 
--- ============ RESPAWN ENGINE ============
-local function fireRespawn()
-	if firing then return end
-	if os.clock() - lastRequestTime < MIN_FIRE_INTERVAL then return end
-	firing = true
-	lastRequestTime = os.clock()
-	characterToken += 1
-	disconnectAll()
-
-	local remotes = findRespawnRemotes()
-	if #remotes > 0 then
-		for _, r in ipairs(remotes) do
-			pcall(r.FireServer, r)
-		end
-	else
-		-- no remote found: schedule the local path
-		task.delay(BACKUP_DELAY, function()
-			if active then pcall(player.LoadCharacter, player) end
-		end)
-	end
-
-	-- hard failsafe: guarantee a respawn even on high ping
-	task.delay(FAILSAFE_TIME, function()
-		if not active then return end
-		if os.clock() - lastRequestTime >= FAILSAFE_TIME then
-			pcall(player.LoadCharacter, player)
-		end
-	end)
-
-	task.delay(0.15, function() firing = false end)
-end
-
--- ============ CHARACTER HOOK ============
-local function hookCharacter(char)
-	characterToken += 1
-	local myToken = characterToken
-	disconnectAll()
-
-	local hum = char:WaitForChild("Humanoid", 5)
-	if not hum then return end
-
-	local triggered = false
-	local function trigger()
-		if triggered then return end
-		if not active then return end
-		if characterToken ~= myToken then return end
-		triggered = true
-		fireRespawn()
-	end
-
-	track(hum.HealthChanged:Connect(function(hp)
-		if hp <= HEALTH_THRESHOLD then trigger() end
-	end))
-	track(hum.Died:Connect(trigger))
-end
-
-local function tryHook()
-	if not active then return end
-	local char = player.Character
-	if char then hookCharacter(char) end
-end
-
-player.CharacterAdded:Connect(function(char)
-	task.defer(function()
-		if active then hookCharacter(char) end
-	end)
-end)
-
--- ============ TOGGLE ============
-local function setState(state)
-	active = state
-	if active then
-		print("⚡ Respawn ON")
-		tryHook()
-	else
-		print("⚡ Respawn OFF")
-		disconnectAll()
-	end
-end
-
-UserInputService.InputBegan:Connect(function(input, gp)
-	if gp then return end
-	if input.KeyCode == TOGGLE_KEY then setState(not active) end
-end)
-
--- ============ UI ============
-local gui = Instance.new("ScreenGui")
-gui.Name = "QuantumRespawnUI"
-gui.ResetOnSpawn = false
-gui.Parent = game:GetService("CoreGui")
-
-local button = Instance.new("TextButton", gui)
-button.Size = UDim2.fromOffset(170, 55)
-button.Position = UDim2.fromScale(0.98, 0.55)
-button.AnchorPoint = Vector2.new(1, 0.5)
-button.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
-button.TextColor3 = Color3.fromRGB(255, 255, 255)
-button.Font = Enum.Font.GothamBold
-button.TextSize = 15
-button.Active = true
-button.Draggable = true
-
-local corner = Instance.new("UICorner", button)
-corner.CornerRadius = UDim.new(0, 12)
-
-local stroke = Instance.new("UIStroke", button)
-stroke.Thickness = 2
-
+-- Update button look based on state
 local function updateButton()
-	if active then
-		button.Text = "⚡ RESPAWN: ON"
-		stroke.Color = Color3.fromRGB(0, 255, 100)
+	if _G.NoclipActive then
+		ToggleButton.Text = "Noclip: ON"
+		ToggleButton.BackgroundColor3 = Color3.fromRGB(75, 255, 75) -- Green
+		startNoclip()
 	else
-		button.Text = "⚡ RESPAWN: OFF"
-		stroke.Color = Color3.fromRGB(255, 60, 60)
+		ToggleButton.Text = "Noclip: OFF"
+		ToggleButton.BackgroundColor3 = Color3.fromRGB(255, 75, 75) -- Red
+		stopNoclip()
 	end
 end
 
-button.MouseButton1Click:Connect(function()
-	setState(not active)
+-- Mobile tap listener
+ToggleButton.MouseButton1Click:Connect(function()
+	_G.NoclipActive = not _G.NoclipActive
 	updateButton()
 end)
 
+-- ==========================================
+-- EXECUTION INITIALIZATION
+-- ==========================================
+-- Start both features
+initRespawnScript()
 updateButton()
-
-print("⚡ Quantum Fast Respawn V6 Loaded")
